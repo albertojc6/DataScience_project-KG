@@ -1,22 +1,30 @@
 from airflow.operators.python import PythonOperator # type:ignore
-from .air_quality_DL import load_data_air
-from dags.utils import HDFSManager
+from .MovieTweetings_DL import load_MovieTweetings
+from .IMDb_DL import load_IMDb
+from dags.utils import HDFSClient
 from airflow import DAG
 
 
-hdfs_manager = HDFSManager()
+hdfs_client = HDFSClient()
 
-def create_tasks(dag: DAG, air_start_date: str, air_end_date: str):
+def create_tasks(dag: DAG):
 
-    ingest_air_task = PythonOperator(
-        task_id='ingest_air',
-        python_callable=load_data_air,
+    ingest_MovieTweetings = PythonOperator(
+        task_id='ingest_MovieTweetings',
+        python_callable=load_MovieTweetings,
         op_kwargs={
-            'start_date': air_start_date,
-            'end_date': air_end_date,
-            'hdfs_manager': hdfs_manager,
+            'hdfs_client': hdfs_client,
         },
         dag=dag
     )
 
-    return ingest_air_task
+    ingest_IMDb = PythonOperator(
+        task_id='ingest_IMDb',
+        python_callable=load_IMDb,
+        op_kwargs={
+            'hdfs_client': hdfs_client,
+        },
+        dag=dag
+    )
+
+    return ingest_MovieTweetings, ingest_IMDb

@@ -3,6 +3,11 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Exclude all files in local_data directories
+airflow/dags/a_landing/local_data/*
+# (Optional) Keep empty directory structure
+!airflow/dags/landing/local_data/.gitkeep
+
 # C extensions
 *.so
 

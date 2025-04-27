@@ -4,7 +4,7 @@ import os
 
 load_dotenv('/opt/airflow/.env')
 
-class HDFSManager:
+class HDFSClient:
 
     def __init__(self):
         self.__name_node_url = os.getenv('HDFS_URL')
