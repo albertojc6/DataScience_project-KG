@@ -24,6 +24,6 @@ with DAG(
 ) as dag:
 
     # Ingestion tasks -> HDFS
-    ingest_MovieTweetings, ingest_IMDb = landing_zone.create_tasks(dag)
+    ingest_MovieTweetings, ingest_IMDb, ingest_TMDb = landing_zone.create_tasks(dag)
 
-    ingest_MovieTweetings >> ingest_IMDb
+    [ingest_MovieTweetings, ingest_IMDb] >> ingest_TMDb

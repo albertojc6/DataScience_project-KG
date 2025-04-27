@@ -71,7 +71,7 @@ services:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/plugins:/opt/airflow/plugins
       - airflow-logs:/opt/airflow/logs
-      - ./airflow/dags/landing/local_data:/opt/airflow/dags/landing/local_data
+      - ./airflow/dags/a_landing/local_data:/opt/airflow/dags/a_landing/local_data
     networks:
       - bdanet
     ports:
@@ -109,7 +109,7 @@ services:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/plugins:/opt/airflow/plugins
       - airflow-logs:/opt/airflow/logs
-      - ./airflow/dags/landing/local_data:/opt/airflow/dags/landing/local_data
+      - ./airflow/dags/a_landing/local_data:/opt/airflow/dags/a_landing/local_data
     networks:
       - bdanet
     depends_on:

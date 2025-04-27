@@ -79,7 +79,7 @@ def load_MovieTweetings(hdfs_client: HDFSClient):
             
             # Convert to a suitable format: Parquet
             f_parquet = output_file.with_suffix('.parquet')
-            df.to_parquet(f_parquet, engine="fastparquet", compression='gzip')
+            df.to_parquet(f_parquet, engine="pyarrow", compression='gzip')
             log.info(f"Converted {f} to {f_parquet}")
             
             # Print memory usage optimization
