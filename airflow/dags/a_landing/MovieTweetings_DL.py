@@ -98,3 +98,4 @@ def load_MovieTweetings(hdfs_client: HDFSClient):
                 
         except Exception as e:
             log.error(f"Error processing {f}: {e}")
+            raise

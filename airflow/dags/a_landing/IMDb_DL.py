@@ -85,8 +85,10 @@ def load_IMDb(hdfs_client: HDFSClient, use_local: bool = False):
             
             except requests.exceptions.RequestException as e:
                 log.error(f"Failed to download {file_name}: {str(e)}")
+                raise
             except IOError as e:
                 log.error(f"Failed to write {file_name}: {str(e)}")
+                raise
 
         # Use ThreadPoolExecutor to parallelize downloads
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:

@@ -3,6 +3,7 @@ from dags.utils.hdfs_utils import HDFSClient
 from pathlib import Path
 import pandas as pd
 import requests
+import shutil
 import copy
 import json
 import os
@@ -167,6 +168,14 @@ def load_TMDb(hdfs_client: HDFSClient, use_local = False):
         log.info(f"Found {tmp_dir}!")
 
     try:
+        if not use_local:
+            local_links_path = Path(__file__).parent / "local_data/TMDb/links.csv"
+            if local_links_path.exists():
+                shutil.copy(str(local_links_path), str(tmp_dir / "links.csv"))
+            else:
+                log.error("links.csv missing in local_data. Cannot map IDs.")
+                return
+
         # Store in HDFS
         log.info("Transferring files to HDFS...")
         hdfs_client.copy_from_local(str(tmp_dir), hdfs_dir)
