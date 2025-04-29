@@ -29,7 +29,7 @@ def load_MovieTweetings(hdfs_client: HDFSClient):
     hdfs_dir = "/data/landing/MovieTweetings"
 
     # Use a directory for hash storage
-    hash_dir = tmp_dir / "hashes"
+    hash_dir = Path("/tmp/hashes")
     hash_dir.mkdir(exist_ok=True)
     
     # URL for retrieving 200k ratings

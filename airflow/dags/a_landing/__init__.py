@@ -34,7 +34,7 @@ def create_tasks(dag: DAG):
         python_callable=load_TMDb,
         op_kwargs={
             'hdfs_client': hdfs_client,
-            'use_local': True
+            'use_local': False
         },
         dag=dag
     )

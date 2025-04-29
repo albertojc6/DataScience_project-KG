@@ -3,6 +3,7 @@ from dags.utils.hdfs_utils import HDFSClient
 from pathlib import Path
 import pandas as pd
 import requests
+import copy
 import json
 import os
 import io
@@ -10,9 +11,35 @@ import io
 # Configure logging
 log = setup_logging(__name__)
 
+def process_tmdb_person_data(tmdb_person_result):
+        """
+        Takes a raw person result dict from TMDB API and simplifies the 'known_for' list.
+        Returns the modified dictionary.
+        """
+        if not tmdb_person_result or not isinstance(tmdb_person_result, dict):
+            return None # Return None if input is invalid
+
+        # Make a copy to avoid modifying the original dict
+        processed_data = copy.deepcopy(tmdb_person_result)
+
+        # Simplify 'known_for': it has lot of unnecessary text
+        if 'known_for' in processed_data and isinstance(processed_data.get('known_for'), list):
+            simplified_known_for = []
+            for item in processed_data['known_for']:
+                if isinstance(item, dict):
+                    simplified_item = {
+                        'id': item.get('id'),
+                        'popularity': item.get('popularity')
+                    }
+                    simplified_known_for.append(simplified_item)
+            processed_data['known_for'] = simplified_known_for
+        return processed_data
+
 def load_TMDb(hdfs_client: HDFSClient, use_local = False):
     """
-    Ingests data from The Movie Database (TMDb) via API, for additional movie crew information.
+    Ingests data from The Movie Database (TMDb) via API, for additional movie crew information,
+    and csv with links between IMDb and TMDb movie ID's.
+
     Only loads data from crew involved in movie that are rated in some ingested tweet.
 
     Args:
@@ -28,8 +55,8 @@ def load_TMDb(hdfs_client: HDFSClient, use_local = False):
     hdfs_dir = "/data/landing"
     TMDb_file = Path(hdfs_dir) / "TMDb/crew_data.json"
 
-    # if file already has instances, only check for addition with API not, locally
-    use_local = False if hdfs_client.exists(TMDb_file) else use_local
+    # if file already has instances, only check for addition with API, not locally
+    use_local = False if hdfs_client.exists(TMDb_file) and hdfs_client.get_size(TMDb_file) else use_local
     if not use_local:
         # Define necessary data: filter crew that is involved in movies rated in some available tweet (i.e. in ratings.parquet)
         ratings_dir = "/data/landing/MovieTweetings/ratings.parquet"
@@ -79,17 +106,27 @@ def load_TMDb(hdfs_client: HDFSClient, use_local = False):
                 try:
                     response = requests.get(url, headers=headers, timeout=10)
                     data = response.json()
-                    if data.get("person_results"):
-                        return {
-                            "imdb_id": person_id,
-                            "tmdb_data": data["person_results"][0]  # Take first result
-                        }
+
+                    person_results = data.get('person_results')
+                    if person_results and isinstance(person_results, list) and len(person_results) > 0:
+
+                        # the first result is the most relevant
+                        raw_tmdb_data = person_results[0]
+
+                        # Process the data (simplify known_for)
+                        processed_tmdb_data = process_tmdb_person_data(raw_tmdb_data)
+                        if processed_tmdb_data:
+                            # Structure the final output for this person
+                            return {
+                                "imdb_id": person_id,
+                                "tmdb_data": processed_tmdb_data
+                            }
                 except requests.exceptions.RequestException as e:
                     log.warning(f"Failed to fetch {person_id}: {str(e)}")
                 return None
 
             # Load existing data if the file exists
-            TMDb_data = {}
+            TMDb_data = []
             if hdfs_client.exists(TMDb_file):
                 try:
                     # Read file contents via HDFS client
@@ -101,17 +138,18 @@ def load_TMDb(hdfs_client: HDFSClient, use_local = False):
                     log.error(f"Error reading {TMDb_file}: {str(e)}")
                     raise
             
-            existing_ids = set(TMDb_data.keys())
+            existing_ids = set(person.get('imdb_id') for person in TMDb_data if isinstance(person, dict) and person.get('imdb_id'))
             new_crew = [pid for pid in unique_crew if pid not in existing_ids]
 
             # Fetch data only for new person IDs
+            if new_crew: log.info("Adding new crew records to dataset")
             for person_id in new_crew:
+
                 person_data = fetch_person_data(person_id, headers)
-                if person_data:
-                    TMDb_data[person_id] = person_data
-            
+                TMDb_data.append(person_data)
+
             # Save the updated data in temporal file
-            with open(tmp_TMDb_file, 'w') as f:
+            with open(tmp_TMDb_file, 'w', encoding='utf-8') as f:
                 json.dump(TMDb_data, f, indent=2)
             
             log.info(f"Total records: {len(TMDb_data)}. Newly added: {len(new_crew)}. Saved to {tmp_TMDb_file}")
@@ -123,9 +161,9 @@ def load_TMDb(hdfs_client: HDFSClient, use_local = False):
     else:
         # Relative data from local filesystem
         tmp_dir = Path(__file__).parent / "local_data/TMDb"
-        if not (tmp_dir / "crew_data.json").exists():
+        if not (tmp_dir / "crew_data.json").exists() or not (tmp_dir / "links.csv").exists():
             log.warning(f"Missing local file. Retrieving from API...")
-            load_TMDb(hdfs_client, use_local=False)
+            return
         log.info(f"Found {tmp_dir}!")
 
     try:

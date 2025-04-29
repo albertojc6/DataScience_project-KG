@@ -3,10 +3,14 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Exclude all files in local_data directories
-airflow/dags/a_landing/local_data/*
-# (Optional) Keep empty directory structure
-!airflow/dags/landing/local_data/.gitkeep
+# 1) Ignore absolutely everything under any local_data folder
+/airflow/dags/**/local_data/**
+
+# 2) But do include the specific links.csv you want
+!/airflow/dags/a_landing/local_data/TMDb/links.csv
+
+# 3) And (optionally) keep the directories alive via .gitkeep
+!**/local_data/.gitkeep
 
 # C extensions
 *.so

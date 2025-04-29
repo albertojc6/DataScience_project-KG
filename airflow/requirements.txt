@@ -18,4 +18,5 @@ sqlalchemy
 python-dotenv
 pyspark
 scikit-learn
+unidecode
 plotly
