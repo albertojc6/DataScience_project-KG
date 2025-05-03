@@ -34,8 +34,7 @@ with DAG(
     # Trusted tasks -> PostgreSQL
     trusted_MovieTweetings, trusted_IMDb, trusted_TMDb = trusted_zone.create_tasks(dag)
 
-    [ingest_MovieTweetings, ingest_IMDb] >> ingest_TMDb >> [format_MovieTweetings, format_IMDB, format_TMDB]
+    [ingest_MovieTweetings, ingest_IMDb] >> ingest_TMDb >> format_IMDB
 
-    format_MovieTweetings >> trusted_MovieTweetings
-    format_IMDB >> trusted_IMDb
-    format_TMDB >> trusted_TMDb
+    
+    format_IMDB >> format_MovieTweetings >> format_TMDB >> trusted_IMDb >> trusted_MovieTweetings >> trusted_TMDb
