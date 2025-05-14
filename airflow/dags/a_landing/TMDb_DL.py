@@ -127,7 +127,7 @@ def load_TMDb(hdfs_client: HDFSClient, use_local = False):
                 return None
 
             # Load existing data if the file exists
-            TMDb_data = []
+            TMDb_data = {}
             if hdfs_client.exists(TMDb_file):
                 try:
                     # Read file contents via HDFS client
@@ -139,7 +139,7 @@ def load_TMDb(hdfs_client: HDFSClient, use_local = False):
                     log.error(f"Error reading {TMDb_file}: {str(e)}")
                     raise
             
-            existing_ids = set(person.get('imdb_id') for person in TMDb_data if isinstance(person, dict) and person.get('imdb_id'))
+            existing_ids = set(TMDb_data.keys())
             new_crew = [pid for pid in unique_crew if pid not in existing_ids]
 
             # Fetch data only for new person IDs
@@ -147,11 +147,16 @@ def load_TMDb(hdfs_client: HDFSClient, use_local = False):
             for person_id in new_crew:
 
                 person_data = fetch_person_data(person_id, headers)
-                TMDb_data.append(person_data)
+                TMDb_data[person_id] = person_data
 
             # Save the updated data in temporal file
             with open(tmp_TMDb_file, 'w', encoding='utf-8') as f:
                 json.dump(TMDb_data, f, indent=2)
+            
+            # Print sample of the data
+            print("\nSample of TMDb data:")
+            sample_data = dict(list(TMDb_data.items())[:2])  # Get first 2 entries
+            print(json.dumps(sample_data, indent=2))
             
             log.info(f"Total records: {len(TMDb_data)}. Newly added: {len(new_crew)}. Saved to {tmp_TMDb_file}")
 

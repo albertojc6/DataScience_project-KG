@@ -1,4 +1,4 @@
-from pyspark.sql.types import StructType, StructField, StringType, IntegerType, BooleanType, ArrayType, LongType, DoubleType
+from pyspark.sql.types import StructType, StructField, StringType, IntegerType, BooleanType, ArrayType, MapType, DoubleType
 from dags.utils.postgres_utils import PostgresManager
 from dags.utils.other_utils import setup_logging
 from pyspark.sql import functions as F
@@ -41,16 +41,16 @@ def format_TMDb(postgres_manager: PostgresManager):
     spark = None
     log.info("Formatting the Movie_Crew dataset from TMDb ...")
     try:
-        # Connection to Spark
         spark = SparkSession.builder \
-            .config("spark.jars", os.getenv('JDBC_URL')) \
-            .appName("TMDbFormatter") \
-            .getOrCreate()
+        .config("spark.jars", os.getenv('JDBC_URL')) \
+        .appName("TMDbFormatter") \
+        .getOrCreate()
 
-        crew_schema = StructType([
-            StructField("imdb_id", StringType(), False), # PK
+        # Create Schemas for reading properly the data
+        value_schema = StructType([
+            StructField("imdb_id", StringType(), False),
             StructField("tmdb_data", StructType([
-                StructField("id", StringType(), False), # PK
+                StructField("id", IntegerType(), False),
                 StructField("name", StringType(), True),
                 StructField("original_name", StringType(), True),
                 StructField("media_type", StringType(), True),
@@ -61,12 +61,13 @@ def format_TMDb(postgres_manager: PostgresManager):
                 StructField("profile_path", StringType(), True),
                 StructField("known_for", ArrayType(
                     StructType([
-                        StructField("id", StringType()),
+                        StructField("id", IntegerType()),
                         StructField("popularity", DoubleType())
                     ])
                 ), True)
             ]), False)
         ])
+        map_schema = MapType(StringType(), value_schema)
 
         links_schema = StructType([
             StructField("movieId", IntegerType()),
@@ -74,14 +75,19 @@ def format_TMDb(postgres_manager: PostgresManager):
             StructField("tmdbId", StringType())
         ])
                 
-        # 1. Read JSON files
+        # 1. Read JSON and CSV files
         crewData_path = f"{os.getenv('HDFS_FS_URL')}/data/landing/TMDb/crew_data.json"
-        crew_df = spark.read \
-            .option("multiLine", True) \
-            .schema(crew_schema) \
-            .option("mode", "PERMISSIVE") \
-            .json(crewData_path)
-        # Obs: "multiline" to read records that can span multiple lines. UTF-8 encoding is default.
+        json_df = spark.sparkContext.wholeTextFiles(crewData_path).toDF(["path", "content"])
+
+        parsed_df = json_df.select(
+            F.from_json(F.col("content"), map_schema).alias("parsed_data")
+        ).select(F.explode("parsed_data").alias("key", "value"))
+
+        # Extract the required fields from the exploded data
+        crew_df = parsed_df.select(
+            F.col("value.imdb_id").alias("imdb_id"),
+            F.col("value.tmdb_data").alias("tmdb_data")
+        )
 
         links_path = f"{os.getenv('HDFS_FS_URL')}/data/landing/TMDb/links.csv"
         links_df = spark.read.csv(links_path, header=True, schema=links_schema)
@@ -158,6 +164,7 @@ def format_TMDb(postgres_manager: PostgresManager):
         df_fmt.printSchema()
         log.info("Sample Data:")
         df_fmt.show(5, truncate=False)
+        print(df_fmt.count())
 
         # 5. Write to PostgreSQL
         table_name = f"fmtted_TMDb_crewData"
@@ -170,4 +177,3 @@ def format_TMDb(postgres_manager: PostgresManager):
         if spark:
             spark.stop()
         log.info("Spark session closed.")
-

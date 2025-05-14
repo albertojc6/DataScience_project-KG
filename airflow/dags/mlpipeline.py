@@ -38,3 +38,5 @@ with DAG(
 
     
     format_IMDB >> format_MovieTweetings >> format_TMDB >> trusted_IMDb >> trusted_MovieTweetings >> trusted_TMDb
+
+    #[ingest_MovieTweetings, ingest_IMDb] >> ingest_TMDb >> [format_MovieTweetings, format_IMDB, format_TMDB] >> [trusted_IMDb, trusted_MovieTweetings, trusted_TMDb]
