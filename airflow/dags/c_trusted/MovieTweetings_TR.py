@@ -80,18 +80,16 @@ def apply_constraints_movies(df: F.DataFrame) -> F.DataFrame:
     """
     # movie_id must not be null
     df = df.filter(F.col("movie_id").isNotNull())
-
-    # movie_year must be a valid year or null
-    df = df.filter((F.col("movie_year").isNull()) | (F.col("movie_year") >= 1900))
-
+    # movie_id must start with 'tt'
+    df = df.filter(F.col("movie_id").startswith("tt"))
     return df
 
 def apply_constraints_users(df: F.DataFrame) -> F.DataFrame:
     """
     Apply constraints specific to the users dataset.
     """
-    # user_id must not be null
-    df = df.filter(F.col("user_id").isNotNull())
+    # user_id and twitter_id must not be null
+    df = df.filter(F.col("user_id").isNotNull() & F.col("twitter_id").isNotNull())
 
     return df
 
@@ -104,5 +102,11 @@ def apply_constraints_ratings(df: F.DataFrame) -> F.DataFrame:
 
     # rating must be between 0 and 10
     df = df.filter((F.col("rating") >= 0) & (F.col("rating") <= 10))
+
+    # rating_timestamp must be in format 'yyyy-MM-dd HH:mm:ss'
+    df = df.withColumn(
+        "rating_timestamp",
+        F.date_format(F.to_timestamp(F.col("rating_timestamp")), "yyyy-MM-dd HH:mm:ss")
+    )
 
     return df
