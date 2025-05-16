@@ -85,6 +85,9 @@ def format_movies(landing_path: str, postgres_manager: PostgresManager):
         # - genres --> genre1|genre2|genre3: split into an array column [genre1, genre2, genre3]
         df = df.withColumn("genres", F.split(F.col("genres"), "\\|"))
 
+        # - movie_id --> add "tt" for homogenization with IMDB movie identfiers
+        df = df.withColumn("movie_id", F.concat(F.lit("tt"), df["movie_id"]))
+
         # 3. Value Formatting
         df = value_formatting(df)
 
@@ -192,6 +195,9 @@ def format_ratings(landing_path: str, postgres_manager: PostgresManager):
 
         # - rating_timestamp --> convert UNIX timestamp to proper timestamp type
         df = df.withColumn("rating_timestamp", F.from_unixtime(F.col("rating_timestamp")).cast(TimestampType()))
+
+        # - movie_id --> add "tt" for homogenization with IMDB movie identfiers
+        df = df.withColumn("movie_id", F.concat(F.lit("tt"), df["movie_id"]))
 
         # 3. Value Formatting
         df = value_formatting(df)
