@@ -82,6 +82,9 @@ def apply_constraints_movies(df: F.DataFrame) -> F.DataFrame:
     df = df.filter(F.col("movie_id").isNotNull())
     # movie_id must start with 'tt'
     df = df.filter(F.col("movie_id").startswith("tt"))
+    # Eliminar la columna movie_year si existe
+    if "movie_year" in df.columns:
+        df = df.drop("movie_year")
     return df
 
 def apply_constraints_users(df: F.DataFrame) -> F.DataFrame:
