@@ -13,13 +13,14 @@ def calculate_file_hash(content):
     """Calculate MD5 hash of file content"""
     return hashlib.md5(content).hexdigest()
 
-def load_MovieTweetings(hdfs_client: HDFSClient):
+def load_MovieTweetings(hdfs_client: HDFSClient, max_rows: int = 2e5):
     """
     Loads the MovieTweetings Dataset, which consists of ratings extracted from tweets: users.dat, items.dat & ratings.dat
     Allow for incremental data ingestion, with datasets' hash comparison
 
     Args:
         hdfs_client: object for interacting with HDFS easily.
+        max_rows: number of ratings to store in HDFS
     """
 
     # Path coniguration: temporal and hdfs directories
@@ -77,6 +78,9 @@ def load_MovieTweetings(hdfs_client: HDFSClient):
             df = pd.read_csv(output_file, sep='::', header=None, names=files[f], encoding='utf-8', engine = 'python',
                             quoting=3, escapechar='\\', on_bad_lines='skip', comment = '#', dtype=str)
             
+            if f == "ratings.dat":
+                df = df.head(max_rows)
+             
             # Convert to a suitable format: Parquet
             f_parquet = output_file.with_suffix('.parquet')
             df.to_parquet(f_parquet, engine="pyarrow", compression='gzip')

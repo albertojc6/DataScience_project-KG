@@ -103,11 +103,11 @@ def format_titleBasics(landing_path: str, postgres_manager: PostgresManager):
         df.printSchema()
         log.info("Sample Data:")
         df.show(5, truncate=False)
+        print(df.count())
 
         # 5. Write to PostgreSQL
         table_name = f"fmtted_IMDb_titleBasics"
-        short_df = df.limit(100000) # OJO
-        postgres_manager.write_dataframe(short_df, table_name)
+        postgres_manager.write_dataframe(df, table_name)
 
     except Exception as e:
         log.error(f"Pipeline failed: {str(e)}", exc_info=True)
@@ -163,11 +163,11 @@ def format_titleCrew(landing_path: str, postgres_manager: PostgresManager):
         df.printSchema()
         log.info("Sample Data:")
         df.show(5, truncate=False)
+        print(df.count())
 
         # 5. Write to PostgreSQL
         table_name = f"fmtted_IMDb_titleCrew"
-        short_df = df.limit(100000) # OJO
-        postgres_manager.write_dataframe(short_df, table_name)
+        postgres_manager.write_dataframe(df, table_name)
 
     except Exception as e:
         log.error(f"Pipeline failed: {str(e)}", exc_info=True)
@@ -229,11 +229,11 @@ def format_nameBasics(landing_path: str, postgres_manager: PostgresManager):
         df.printSchema()
         log.info("Sample Data:")
         df.show(5, truncate=False)
+        print(df.count())
 
         # 5. Write to PostgreSQL
         table_name = f"fmtted_IMDb_nameBasics"
-        short_df = df.limit(100000) # OJO
-        postgres_manager.write_dataframe(short_df, table_name)
+        postgres_manager.write_dataframe(df, table_name)
 
     except Exception as e:
         log.error(f"Pipeline failed: {str(e)}", exc_info=True)

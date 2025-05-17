@@ -14,7 +14,8 @@ def create_tasks(dag: DAG):
         task_id='ingest_MovieTweetings',
         python_callable=load_MovieTweetings,
         op_kwargs={
-            'hdfs_client': hdfs_client
+            'hdfs_client': hdfs_client,
+            'max_rows': int(2e4) #20k ratings/tweets
         },
         dag=dag
     )

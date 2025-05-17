@@ -3,9 +3,6 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# 1) Ignore absolutely everything under any local_data folder
-/airflow/dags/a_landing/local_data/IMDb
-
 # C extensions
 *.so
 

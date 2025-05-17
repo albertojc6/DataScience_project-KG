@@ -102,7 +102,8 @@ def format_movies(landing_path: str, postgres_manager: PostgresManager):
 
         # 6. Write to PostgreSQL
         table_name = f"fmtted_MovTweet_movies"
-        postgres_manager.write_dataframe(df, table_name)
+        short_df = df.limit(100000) # OJO
+        postgres_manager.write_dataframe(short_df, table_name)
 
     except Exception as e:
         log.error(f"Pipeline failed: {str(e)}", exc_info=True)
@@ -150,7 +151,8 @@ def format_users(landing_path: str, postgres_manager: PostgresManager):
 
         # 4. Write to PostgreSQL
         table_name = f"fmtted_MovTweet_users"
-        postgres_manager.write_dataframe(df, table_name)
+        short_df = df.limit(100000) # OJO
+        postgres_manager.write_dataframe(short_df, table_name)
 
     except Exception as e:
         log.error(f"Pipeline failed: {str(e)}", exc_info=True)
@@ -210,7 +212,8 @@ def format_ratings(landing_path: str, postgres_manager: PostgresManager):
 
         # 5. Write to PostgreSQL
         table_name = f"fmtted_MovTweet_ratings"
-        postgres_manager.write_dataframe(df, table_name)
+        short_df = df.limit(100000) # OJO
+        postgres_manager.write_dataframe(short_df, table_name)
 
     except Exception as e:
         log.error(f"Pipeline failed: {str(e)}", exc_info=True)
