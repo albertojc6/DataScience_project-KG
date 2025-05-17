@@ -85,5 +85,7 @@ def apply_constraints_IMDb(df: F.DataFrame) -> F.DataFrame:
             ((F.col("endYear").cast("int") >= 1800) & (F.col("endYear").cast("int") <= current_year) )
          )  # Valid endYear
     )  # Close df.filter
-
+    # Eliminar la columna originalTitle si existe
+    if "originalTitle" in df.columns:
+        df = df.drop("originalTitle")
     return df

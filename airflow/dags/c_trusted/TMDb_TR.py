@@ -69,14 +69,24 @@ def apply_constraints_TMDb(df: DataFrame) -> DataFrame:
     # imdb_id and tmdb_id must not be null
     df = df.filter(F.col("imdb_id").isNotNull() & F.col("tmdb_id").isNotNull())
 
+    # imdb_id must start with 'nm'
+    df = df.filter(F.col("imdb_id").startswith("nm"))
+
     # popularity must be >= 0
     df = df.filter(F.col("popularity") >= 0)
+    df = df.filter(F.col("known_for_popularity") >= 0)
 
     # gender must be one of the valid values
-    valid_genders = ["NotSet", "Female", "Male", "Non-binary"]
+    valid_genders = ["Female", "Male", "Non-binary"]
     df = df.filter(F.col("gender").isin(valid_genders))
 
-    # media_type must not be null
-    df = df.filter(F.col("media_type").isNotNull())
+    # adult must be 'true' or 'false'
+    df = df.filter(F.col("adult").isin(["true", "false"]))
 
+    # Filtrar filas donde known_for no empiece con 'tt'
+    df = df.filter(F.col("known_for").startswith("tt"))
+
+    # Eliminar la columna original_name si existe
+    if "original_name" in df.columns:
+        df = df.drop("original_name")
     return df
