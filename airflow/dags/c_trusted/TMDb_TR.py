@@ -81,7 +81,7 @@ def apply_constraints_TMDb(df: DataFrame) -> DataFrame:
     df = df.filter(F.col("gender").isin(valid_genders))
 
     # adult must be 'true' or 'false'
-    df = df.filter(F.col("adult").isin(["true", "false"]))
+    df = df.filter(F.col("adult").isin([True, False]))
 
     # Filtrar filas donde known_for no empiece con 'tt'
     df = df.filter(F.col("known_for").startswith("tt"))

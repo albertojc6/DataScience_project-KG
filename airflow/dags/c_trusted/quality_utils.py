@@ -46,6 +46,10 @@ def print_dataset_profile(results: dict) -> None:
     """
     def create_section(title, data, is_stats=False):
         section = [f"{title}:", "-" * 40]
+
+        if isinstance(data, str):
+            section.append(data)
+            return "\n".join(section)
         
         if is_stats:
             variables = sorted(results['numeric_columns'])
