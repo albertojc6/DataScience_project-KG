@@ -3,6 +3,7 @@ volumes:
   hdfs-namenode:
   hdfs-datanode:
   airflow-logs:
+  graphdb-data:
 
 networks:
   bdanet:
@@ -115,6 +116,24 @@ services:
     depends_on:
       - airflow-webserver
       - airflow-init
+  graphdb:
+    image: ontotext/graphdb:10.6.0
+    container_name: graphdb
+    environment:
+      GDB_HEAP_SIZE: "2g"
+    volumes:
+      - graphdb-data:/opt/graphdb/home
+    networks:
+      - bdanet
+    ports:
+      - "7200:7200"
+      - "7300:7300"
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "http://localhost:7200/rest/repositories" ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
 
   # streamlit-app:
   #   build: ./streamlit-app
