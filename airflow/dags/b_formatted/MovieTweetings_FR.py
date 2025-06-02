@@ -1,32 +1,38 @@
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType, TimestampType
-from dags.utils.postgres_utils import PostgresManager
+from dags.utils.hdfs_utils import HDFSClient
 from dags.utils.other_utils import setup_logging
 from pyspark.sql import functions as F
 from pyspark.sql import SparkSession
 from unidecode import unidecode
 import subprocess
+import shutil
 import os
 
 # Configure logging
 log = setup_logging(__name__)
 
-def format_MovieTweetings(postgres_manager: PostgresManager):
+# Set the data lake path where data is, and posterior formatted dir
+hdfs_landing = "/data/landing/MovieTweetings/"
+hdfs_formatted = "/data/formatted/MovieTweetings"
+
+def format_MovieTweetings(hdfs_client: HDFSClient):
     """
-    Formats MovieTweetings data according to a common relational data model, using PostgreSQL
+    Formats MovieTweetings data according to a common relational data model, using HDFS
 
     Args:
-        postgres_manager: object to facilitate the interaction with PostgreSQL server
+        hdfs_client: object for interacting with HDFS easily.
     """
 
-    # Clean up temporary files from previous stage
-    subprocess.run(["rm", "-rf", f'/tmp/MovieTweetings/'], check=True)
-
-    hdfs_landing = f"{os.getenv('HDFS_FS_URL')}/data/landing/MovieTweetings/"
+    # Clean up temporary files from previous runs
+    tmp_dir = "/tmp/MovieTweetings"
+    if os.path.exists(tmp_dir):
+        shutil.rmtree(tmp_dir)
+    os.makedirs(tmp_dir, exist_ok=True)
 
     # Format each dataset from MovieTweetings with its corresponding processing
-    format_movies(hdfs_landing, postgres_manager)
-    format_users(hdfs_landing, postgres_manager)
-    format_ratings(hdfs_landing, postgres_manager)
+    format_movies(hdfs_client)
+    format_users(hdfs_client)
+    format_ratings(hdfs_client)
 
 
 def value_formatting(df):
@@ -45,13 +51,12 @@ def value_formatting(df):
     
     return df
 
-def format_movies(landing_path: str, postgres_manager: PostgresManager):
+def format_movies(hdfs_client: HDFSClient):
     """
-    Formats movies datset from MovieTweetings
+    Formats movies dataset from MovieTweetings
 
     Args:
-        landing_path: the directory where movies.parquet is located
-        postgres_manager: object to facilitate the interaction with PostgreSQL server
+        hdfs_client: object for interacting with HDFS easily.
     """
 
     spark = None
@@ -59,19 +64,18 @@ def format_movies(landing_path: str, postgres_manager: PostgresManager):
     try:
         # Connection to Spark
         spark = SparkSession.builder \
-            .config("spark.jars", os.getenv('JDBC_URL')) \
             .appName("MoviesFormatter") \
             .getOrCreate()
 
         # 1. Read data from RDD in HDFS and create schema
         schema =  StructType([
-            StructField("movie_id", StringType(), False), # PK
-            StructField("movie_title", StringType(), True),
-            StructField("genres", StringType(), True)
+            StructField("movie_id", StringType(), False), # PK: unique identifier of the movie
+            StructField("movie_title", StringType(), True), # title of the movie including year
+            StructField("genres", StringType(), True) # pipe-separated list of genres
         ])
 
-        movies_path = landing_path + "movies.parquet"
-        df = spark.read.schema(schema).parquet(movies_path)
+        movies_path = hdfs_landing + "movies.dat"
+        df = spark.read.schema(schema).option("sep", "::").csv(f"{os.getenv('HDFS_FS_URL')}/{movies_path}")
 
         # 2. Variable Formatting
         # - movie_title --> movie_title (movie_year): split and Data Types Conversion!
@@ -99,11 +103,33 @@ def format_movies(landing_path: str, postgres_manager: PostgresManager):
         df.printSchema()
         log.info("Sample Data:")
         df.show(5, truncate=False)
+        print(df.count())
 
-        # 6. Write to PostgreSQL
-        table_name = f"fmtted_MovTweet_movies"
-        short_df = df.limit(100000) # OJO
-        postgres_manager.write_dataframe(short_df, table_name)
+        # 6. Save to parquet and analyze storage
+        tmp_dir = "/tmp/MovieTweetings"
+        os.makedirs(tmp_dir, exist_ok=True)
+        
+        # Get original file size from HDFS
+        original_size = hdfs_client.get_size(movies_path)
+        
+        f_parquet = f"{tmp_dir}/movies.parquet"
+        
+        # Write with overwrite mode
+        df.write.mode("overwrite").parquet(f_parquet)
+        
+        # Calculate Parquet directory size
+        parquet_size = 0
+        for dirpath, _, filenames in os.walk(f_parquet):
+            for f in filenames:
+                fp = os.path.join(dirpath, f)
+                parquet_size += os.path.getsize(fp)
+        
+        # Log size comparison
+        log.info(f"Size reduction: {original_size} bytes → {parquet_size} bytes ({(1 - parquet_size/original_size)*100:.1f}% saved)")
+        
+        # Store in HDFS
+        hdfs_client.copy_from_local(f_parquet, hdfs_formatted, overwrite=True)
+        log.info(f"Transferred {f_parquet} to HDFS")
 
     except Exception as e:
         log.error(f"Pipeline failed: {str(e)}", exc_info=True)
@@ -113,13 +139,12 @@ def format_movies(landing_path: str, postgres_manager: PostgresManager):
             spark.stop()
         log.info("Spark session closed.")
 
-def format_users(landing_path: str, postgres_manager: PostgresManager):
+def format_users(hdfs_client: HDFSClient):
     """
-    Formats users database from MovieTweetings
+    Formats users dataset from MovieTweetings
 
     Args:
-        landing_path: the directory where users.parquet is located
-        postgres_manager: object to facilitate the interaction with PostgreSQL server
+        hdfs_client: object for interacting with HDFS easily.
     """
 
     spark = None
@@ -127,18 +152,17 @@ def format_users(landing_path: str, postgres_manager: PostgresManager):
     try:
         # Connection to Spark
         spark = SparkSession.builder \
-            .config("spark.jars", os.getenv('JDBC_URL')) \
             .appName("UsersFormatter") \
             .getOrCreate()
 
         # 1. Read data from RDD in HDFS and create schema
-        schema =  StructType([
-            StructField("user_id", StringType(), False), # PK
-            StructField("twitter_id", StringType(), True)
-            ])
+        schema = StructType([
+            StructField("user_id", StringType(), False), # PK: unique identifier of the user
+            StructField("twitter_id", StringType(), True) # corresponding Twitter ID if available
+        ])
 
-        users_path = landing_path + "users.parquet"
-        df = spark.read.schema(schema).parquet(users_path)
+        users_path = hdfs_landing + "users.dat"
+        df = spark.read.schema(schema).option("sep", "::").csv(f"{os.getenv('HDFS_FS_URL')}/{users_path}")
 
         # 2. Value Formatting
         df = value_formatting(df)
@@ -148,11 +172,33 @@ def format_users(landing_path: str, postgres_manager: PostgresManager):
         df.printSchema()
         log.info("Sample Data:")
         df.show(5, truncate=False)
+        print(df.count())
 
-        # 4. Write to PostgreSQL
-        table_name = f"fmtted_MovTweet_users"
-        short_df = df.limit(100000) # OJO
-        postgres_manager.write_dataframe(short_df, table_name)
+        # 4. Save to parquet and analyze storage
+        tmp_dir = "/tmp/MovieTweetings"
+        os.makedirs(tmp_dir, exist_ok=True)
+        
+        # Get original file size from HDFS
+        original_size = hdfs_client.get_size(users_path)
+        
+        f_parquet = f"{tmp_dir}/users.parquet"
+        
+        # Write with overwrite mode
+        df.write.mode("overwrite").parquet(f_parquet)
+        
+        # Calculate Parquet directory size
+        parquet_size = 0
+        for dirpath, _, filenames in os.walk(f_parquet):
+            for f in filenames:
+                fp = os.path.join(dirpath, f)
+                parquet_size += os.path.getsize(fp)
+        
+        # Log size comparison
+        log.info(f"Size reduction: {original_size} bytes → {parquet_size} bytes ({(1 - parquet_size/original_size)*100:.1f}% saved)")
+        
+        # Store in HDFS
+        hdfs_client.copy_from_local(f_parquet, hdfs_formatted, overwrite=True)
+        log.info(f"Transferred {f_parquet} to HDFS")
 
     except Exception as e:
         log.error(f"Pipeline failed: {str(e)}", exc_info=True)
@@ -162,13 +208,12 @@ def format_users(landing_path: str, postgres_manager: PostgresManager):
             spark.stop()
         log.info("Spark session closed.")
 
-def format_ratings(landing_path: str, postgres_manager: PostgresManager):
+def format_ratings(hdfs_client: HDFSClient):
     """
-    Formats ratings datset from MovieTweetings
+    Formats ratings dataset from MovieTweetings
 
     Args:
-        landing_path: the directory where ratings.parquet is located
-        postgres_manager: object to facilitate the interaction with PostgreSQL server
+        hdfs_client: object for interacting with HDFS easily.
     """
 
     spark = None
@@ -176,20 +221,19 @@ def format_ratings(landing_path: str, postgres_manager: PostgresManager):
     try:
         # Connection to Spark
         spark = SparkSession.builder \
-            .config("spark.jars", os.getenv('JDBC_URL')) \
             .appName("RatingsFormatter") \
             .getOrCreate()
 
         # 1. Read data from RDD in HDFS and create schema
-        schema =  StructType([
-            StructField("user_id", StringType(), False), # PK
-            StructField("movie_id", StringType(), False), # PK
-            StructField("rating", StringType(), True),
-            StructField("rating_timestamp", StringType(), True)
+        schema = StructType([
+            StructField("user_id", StringType(), False), # PK: unique identifier of the user
+            StructField("movie_id", StringType(), False), # PK: unique identifier of the movie
+            StructField("rating", StringType(), True), # rating given by the user (1-10)
+            StructField("rating_timestamp", StringType(), True) # UNIX timestamp of when the rating was given
         ])
 
-        ratings_path = landing_path + "ratings.parquet"
-        df = spark.read.schema(schema).parquet(ratings_path)
+        ratings_path = hdfs_landing + "ratings.dat"
+        df = spark.read.schema(schema).option("sep", "::").csv(f"{os.getenv('HDFS_FS_URL')}/{ratings_path}")
 
         # 2. Variable Formatting
         # - rating --> convert from String to Integer
@@ -198,7 +242,7 @@ def format_ratings(landing_path: str, postgres_manager: PostgresManager):
         # - rating_timestamp --> convert UNIX timestamp to proper timestamp type
         df = df.withColumn("rating_timestamp", F.from_unixtime(F.col("rating_timestamp")).cast(TimestampType()))
 
-        # - movie_id --> add "tt" for homogenization with IMDB movie identfiers
+        # - movie_id --> add "tt" for homogenization with IMDB movie identifiers
         df = df.withColumn("movie_id", F.concat(F.lit("tt"), df["movie_id"]))
 
         # 3. Value Formatting
@@ -209,11 +253,33 @@ def format_ratings(landing_path: str, postgres_manager: PostgresManager):
         df.printSchema()
         log.info("Sample Data:")
         df.show(5, truncate=False)
+        print(df.count())
 
-        # 5. Write to PostgreSQL
-        table_name = f"fmtted_MovTweet_ratings"
-        short_df = df.limit(100000) # OJO
-        postgres_manager.write_dataframe(short_df, table_name)
+        # 5. Save to parquet and analyze storage
+        tmp_dir = "/tmp/MovieTweetings"
+        os.makedirs(tmp_dir, exist_ok=True)
+        
+        # Get original file size from HDFS
+        original_size = hdfs_client.get_size(ratings_path)
+        
+        f_parquet = f"{tmp_dir}/ratings.parquet"
+        
+        # Write with overwrite mode
+        df.write.mode("overwrite").parquet(f_parquet)
+        
+        # Calculate Parquet directory size
+        parquet_size = 0
+        for dirpath, _, filenames in os.walk(f_parquet):
+            for f in filenames:
+                fp = os.path.join(dirpath, f)
+                parquet_size += os.path.getsize(fp)
+        
+        # Log size comparison
+        log.info(f"Size reduction: {original_size} bytes → {parquet_size} bytes ({(1 - parquet_size/original_size)*100:.1f}% saved)")
+        
+        # Store in HDFS
+        hdfs_client.copy_from_local(f_parquet, hdfs_formatted, overwrite=True)
+        log.info(f"Transferred {f_parquet} to HDFS")
 
     except Exception as e:
         log.error(f"Pipeline failed: {str(e)}", exc_info=True)

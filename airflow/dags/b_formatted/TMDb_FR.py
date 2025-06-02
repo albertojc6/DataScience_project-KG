@@ -1,15 +1,18 @@
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType, BooleanType, ArrayType, MapType, DoubleType
-from dags.utils.postgres_utils import PostgresManager
+from dags.utils.hdfs_utils import HDFSClient
 from dags.utils.other_utils import setup_logging
 from pyspark.sql import functions as F
 from pyspark.sql import SparkSession
-from unidecode import  unidecode
-import subprocess
+from unidecode import unidecode
+import shutil
 import os
 
 # Configure logging
 log = setup_logging(__name__)
 
+# Set the data lake path where data is, and posterior formatted dir
+hdfs_landing = "/data/landing/TMDb/"
+hdfs_formatted = "/data/formatted/TMDb"
 
 def value_formatting(df):
     """
@@ -27,42 +30,44 @@ def value_formatting(df):
     
     return df
 
-def format_TMDb(postgres_manager: PostgresManager):
+def format_TMDb(hdfs_client: HDFSClient):
     """
-    Formats TMDb data according to a common relational data model, using PostgreSQL
+    Formats TMDb data according to a common relational data model, using HDFS
 
     Args:
-        postgres_manager: object to facilitate the interaction with PostgreSQL server
+        hdfs_client: object for interacting with HDFS easily.
     """
 
-    # Clean up temporary files from previous stage
-    subprocess.run(["rm", "-rf", f'/tmp/TMDb/'], check=True)
+    # Clean up temporary files from previous runs
+    tmp_dir = "/tmp/TMDb"
+    if os.path.exists(tmp_dir):
+        shutil.rmtree(tmp_dir)
+    os.makedirs(tmp_dir, exist_ok=True)
 
     spark = None
     log.info("Formatting the Movie_Crew dataset from TMDb ...")
     try:
         spark = SparkSession.builder \
-        .config("spark.jars", os.getenv('JDBC_URL')) \
-        .appName("TMDbFormatter") \
-        .getOrCreate()
+            .appName("TMDbFormatter") \
+            .getOrCreate()
 
         # Create Schemas for reading properly the data
         value_schema = StructType([
-            StructField("imdb_id", StringType(), False),
+            StructField("imdb_id", StringType(), False), # unique identifier from IMDb
             StructField("tmdb_data", StructType([
-                StructField("id", IntegerType(), False),
-                StructField("name", StringType(), True),
-                StructField("original_name", StringType(), True),
-                StructField("media_type", StringType(), True),
-                StructField("adult", BooleanType(), True),
-                StructField("popularity", DoubleType(), True),
-                StructField("gender", IntegerType(), True),
-                StructField("known_for_department", StringType(), True),
-                StructField("profile_path", StringType(), True),
+                StructField("id", IntegerType(), False), # unique identifier from TMDb
+                StructField("name", StringType(), True), # name in English
+                StructField("original_name", StringType(), True), # name in original language
+                StructField("media_type", StringType(), True), # type of media (person, movie, etc.)
+                StructField("adult", BooleanType(), True), # whether content is adult-oriented
+                StructField("popularity", DoubleType(), True), # popularity score
+                StructField("gender", IntegerType(), True), # gender code (0: NotSet, 1: Female, 2: Male, 3: Non-binary)
+                StructField("known_for_department", StringType(), True), # department they are known for
+                StructField("profile_path", StringType(), True), # path to profile image
                 StructField("known_for", ArrayType(
                     StructType([
-                        StructField("id", IntegerType()),
-                        StructField("popularity", DoubleType())
+                        StructField("id", IntegerType()), # TMDb ID of known work
+                        StructField("popularity", DoubleType()) # popularity of known work
                     ])
                 ), True)
             ]), False)
@@ -70,14 +75,14 @@ def format_TMDb(postgres_manager: PostgresManager):
         map_schema = MapType(StringType(), value_schema)
 
         links_schema = StructType([
-            StructField("movieId", IntegerType()),
-            StructField("imdbId", StringType()), 
-            StructField("tmdbId", StringType())
+            StructField("movieId", IntegerType()), # MovieLens ID
+            StructField("imdbId", StringType()), # IMDb ID without 'tt' prefix
+            StructField("tmdbId", StringType()) # TMDb ID
         ])
                 
         # 1. Read JSON and CSV files
-        crewData_path = f"{os.getenv('HDFS_FS_URL')}/data/landing/TMDb/crew_data.json"
-        json_df = spark.sparkContext.wholeTextFiles(crewData_path).toDF(["path", "content"])
+        crewData_path = hdfs_landing + "crew_data.json"
+        json_df = spark.sparkContext.wholeTextFiles(f"{os.getenv('HDFS_FS_URL')}/{crewData_path}").toDF(["path", "content"])
 
         parsed_df = json_df.select(
             F.from_json(F.col("content"), map_schema).alias("parsed_data")
@@ -89,8 +94,8 @@ def format_TMDb(postgres_manager: PostgresManager):
             F.col("value.tmdb_data").alias("tmdb_data")
         )
 
-        links_path = f"{os.getenv('HDFS_FS_URL')}/data/landing/TMDb/links.csv"
-        links_df = spark.read.csv(links_path, header=True, schema=links_schema)
+        links_path = hdfs_landing + "links.csv"
+        links_df = spark.read.csv(f"{os.getenv('HDFS_FS_URL')}/{links_path}", header=True, schema=links_schema)
 
         # 2. Order results: flatten crew_data
         crew_df = crew_df.select(
@@ -166,9 +171,31 @@ def format_TMDb(postgres_manager: PostgresManager):
         df_fmt.show(5, truncate=False)
         print(df_fmt.count())
 
-        # 5. Write to PostgreSQL
-        table_name = f"fmtted_TMDb_crewData"
-        postgres_manager.write_dataframe(df_fmt, table_name)
+        # 6. Save to parquet and analyze storage
+        tmp_dir = "/tmp/TMDb"
+        os.makedirs(tmp_dir, exist_ok=True)
+        
+        # Get original file size from HDFS
+        original_size = hdfs_client.get_size(crewData_path)
+        
+        f_parquet = f"{tmp_dir}/crew_data.parquet"
+        
+        # Write with overwrite mode
+        df_fmt.write.mode("overwrite").parquet(f_parquet)
+        
+        # Calculate Parquet directory size
+        parquet_size = 0
+        for dirpath, _, filenames in os.walk(f_parquet):
+            for f in filenames:
+                fp = os.path.join(dirpath, f)
+                parquet_size += os.path.getsize(fp)
+        
+        # Log size comparison
+        log.info(f"Size reduction: {original_size} bytes → {parquet_size} bytes ({(1 - parquet_size/original_size)*100:.1f}% saved)")
+        
+        # Store in HDFS
+        hdfs_client.copy_from_local(f_parquet, hdfs_formatted, overwrite=True)
+        log.info(f"Transferred {f_parquet} to HDFS")
 
     except Exception as e:
         log.error(f"Pipeline failed: {str(e)}", exc_info=True)

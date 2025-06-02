@@ -1,65 +1,91 @@
 from pyspark.sql import functions as F
 from pyspark.sql import SparkSession
-from dags.utils.postgres_utils import PostgresManager
 from dags.utils.other_utils import setup_logging
 from dags.c_trusted.quality_utils import *
+from dags.utils.hdfs_utils import HDFSClient
 import os
+import shutil
 
 # Configure logging
 log = setup_logging(__name__)
 
-def quality_TMDb(postgres_manager: PostgresManager):
+# Set the HDFS paths
+hdfs_formatted = "/data/formatted/TMDb"
+hdfs_trusted = "/data/trusted/TMDb"
+
+def quality_TMDb(hdfs_client: HDFSClient):
     """
     Improves and analyzes quality of the TMDb crewData dataset.
+    Reads from formatted Parquet files in HDFS and writes trusted data back to HDFS.
     """
-    # Input and output tables
-    input_table = "fmtted_TMDb_crewData"
-    output_table = "trusted_TMDb_crewData"
+    # Clean up temporary files from previous runs
+    tmp_dir = "/tmp/TMDb"
+    if os.path.exists(tmp_dir):
+        shutil.rmtree(tmp_dir)
+    os.makedirs(tmp_dir, exist_ok=True)
 
-    # Initialize Spark session
-    spark = SparkSession.builder \
-        .config("spark.jars", os.getenv('JDBC_URL')) \
-        .appName(f"Trusted_{input_table}") \
-        .getOrCreate()
+    datasets = [
+        {"file": "crew_data.parquet", "constraints": apply_constraints_TMDb}
+    ]
 
-    # 1. Read the table from PostgreSQL
-    df = postgres_manager.read_table(spark, input_table)
-    df.show(5)
+    for dataset in datasets:
+        file = dataset["file"]
+        constraints = dataset["constraints"]
 
-    # 2. Generate Data Profiles (descriptive statistics)
-    log.info(f"Generating Data Profiles for {input_table}...")
-    results = descriptive_profile(df)
-    profile_print = print_dataset_profile(results)
-    print(f"\nDataset profile for {input_table}:\n{'=' * 40}\n{profile_print}")
+        log.info(f"Processing dataset: {file}...")
 
-    # 3. Computation of Data Quality Metrics
-    log.info(f"Computing Data Quality Metrics for {input_table}...")
-    Q_cm_Att = compute_column_completeness(df)
-    output_lines = ["\nColumn completeness report:"]
-    output_lines.append(f" {'-' * 36} \n{'Column':<25} | {'Missing (%)':>10} \n{'-' * 36}")
-    for row in Q_cm_Att.collect():
-        missing_pct = f"{row['missing_ratio'] * 100:.2f}%"
-        output_lines.append(f"{row['column']:<25} | {missing_pct:>10} \n{'-' * 36}")
-    Q_cm_rel = compute_relation_completeness(df)
-    print(f"\nRelation's Completeness (ratio of complete rows): {Q_cm_rel:.4f}")
-    print("\n".join(output_lines))
-    Q_r = df.count() / df.dropDuplicates().count()
-    print(f"\nRelation's Redundancy (ratio of duplicates): {Q_r:.4f}")
+        # Initialize Spark session
+        spark = SparkSession.builder \
+            .appName(f"Trusted_{file}") \
+            .getOrCreate()
 
-    # 4. Apply Constraints
-    log.info(f"Applying constraints to {input_table}...")
-    df = apply_constraints_TMDb(df)
+        try:
+            # 1. Read the Parquet file from HDFS
+            input_path = f"{os.getenv('HDFS_FS_URL')}/{hdfs_formatted}/{file}"
+            df = spark.read.parquet(input_path)
+            df.show(5)
 
-    # Remove duplicates
-    df = df.dropDuplicates()
+            # 2. Generate Data Profiles (descriptive statistics)
+            log.info(f"Generating Data Profiles for {file}...")
+            results = descriptive_profile(df)
+            profile_print = print_dataset_profile(results)
+            print(f"\nDataset profile for {file}:\n{'=' * 40}\n{profile_print}")
 
-    # Write the cleaned data to PostgreSQL
-    log.info(f"Writing trusted {input_table} dataset to PostgreSQL...")
-    postgres_manager.write_dataframe(df, output_table)
+            # 3. Computation of Data Quality Metrics
+            log.info(f"Computing Data Quality Metrics for {file}...")
+            Q_cm_Att = compute_column_completeness(df)
+            output_lines = ["\nColumn completeness report:"]
+            output_lines.append(f" {'-' * 36} \n{'Column':<25} | {'Missing (%)':>10} \n{'-' * 36}")
+            for row in Q_cm_Att.collect():
+                missing_pct = f"{row['missing_ratio'] * 100:.2f}%"
+                output_lines.append(f"{row['column']:<25} | {missing_pct:>10} \n{'-' * 36}")
+            Q_cm_rel = compute_relation_completeness(df)
+            print(f"\nRelation's Completeness (ratio of complete rows): {Q_cm_rel:.4f}")
+            print("\n".join(output_lines))
+            Q_r = df.count() / df.dropDuplicates().count()
+            print(f"\nRelation's Redundancy (ratio of duplicates): {Q_r:.4f}")
 
-    # Stop Spark session
-    spark.stop()
-    log.info("Spark session closed.")
+            # 4. Apply Constraints
+            log.info(f"Applying constraints to {file}...")
+            df = constraints(df)
+
+            # Remove duplicates
+            df = df.dropDuplicates()
+
+            # 5. Save to parquet and analyze storage
+            f_parquet = f"{tmp_dir}/{file}"
+            df.write.mode("overwrite").parquet(f_parquet)
+            
+            # Store in HDFS
+            hdfs_client.copy_from_local(f_parquet, hdfs_trusted, overwrite=True)
+            log.info(f"Transferred {f_parquet} to HDFS")
+
+        except Exception as e:
+            log.error(f"Pipeline failed for {file}: {str(e)}", exc_info=True)
+            raise
+        finally:
+            spark.stop()
+            log.info("Spark session closed.")
 
 
 def apply_constraints_TMDb(df: DataFrame) -> DataFrame:

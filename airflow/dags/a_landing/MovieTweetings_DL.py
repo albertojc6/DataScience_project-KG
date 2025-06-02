@@ -1,7 +1,6 @@
 from dags.utils.other_utils import setup_logging
 from dags.utils.hdfs_utils import HDFSClient
 from pathlib import Path
-import pandas as pd
 import requests
 import hashlib
 import os
@@ -13,7 +12,7 @@ def calculate_file_hash(content):
     """Calculate MD5 hash of file content"""
     return hashlib.md5(content).hexdigest()
 
-def load_MovieTweetings(hdfs_client: HDFSClient, max_rows: int = 2e5):
+def load_MovieTweetings(hdfs_client: HDFSClient):
     """
     Loads the MovieTweetings Dataset, which consists of ratings extracted from tweets: users.dat, items.dat & ratings.dat
     Allow for incremental data ingestion, with datasets' hash comparison
@@ -35,13 +34,9 @@ def load_MovieTweetings(hdfs_client: HDFSClient, max_rows: int = 2e5):
     
     # URL for retrieving 200k ratings
     base_url = os.getenv("MovieTweetings_URL")
-    files = {
-        "movies.dat": ["movie_id", "movie_title", "genres"],
-        "ratings.dat": ["user_id", "movie_id", "rating", "rating_timestamp"],
-        "users.dat": ["user_id", "twitter_id"]
-    }
+    files = ["movies.dat", "ratings.dat", "users.dat"]
     
-    for f in files.keys():
+    for f in files:
         # First check if file exists in HDFS
         hash_file = hash_dir / f"{f}.md5"
         
@@ -74,26 +69,9 @@ def load_MovieTweetings(hdfs_client: HDFSClient, max_rows: int = 2e5):
             log.info(f"File {f} downloaded!")
         
         try:
-            # Read data as csv, with .dat separator and column names
-            df = pd.read_csv(output_file, sep='::', header=None, names=files[f], encoding='utf-8', engine = 'python',
-                            quoting=3, escapechar='\\', on_bad_lines='skip', comment = '#', dtype=str)
-            
-            if f == "ratings.dat":
-                df = df.head(max_rows)
-             
-            # Convert to a suitable format: Parquet
-            f_parquet = output_file.with_suffix('.parquet')
-            df.to_parquet(f_parquet, engine="pyarrow", compression='gzip')
-            log.info(f"Converted {f} to {f_parquet}")
-            
-            # Print memory usage optimization
-            dat_size = os.path.getsize(output_file)
-            parquet_size = os.path.getsize(f_parquet)
-            log.info(f"Size reduction: {dat_size} bytes → {parquet_size} bytes ({(1 - parquet_size/dat_size)*100:.1f}% saved)")
-            
-            # Store in HDFS
-            hdfs_client.copy_from_local(str(f_parquet), hdfs_dir)
-            log.info(f"Transferred {f_parquet} to HDFS")
+            # Store raw .dat file in HDFS
+            hdfs_client.copy_from_local(str(output_file), hdfs_dir)
+            log.info(f"Transferred {f} to HDFS")
             
             # Save the hash for next run comparison
             with open(hash_file, 'w') as hf:

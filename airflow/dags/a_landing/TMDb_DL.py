@@ -4,6 +4,7 @@ from pathlib import Path
 import pandas as pd
 import requests
 import shutil
+import time
 import copy
 import json
 import os
@@ -59,8 +60,8 @@ def load_TMDb(hdfs_client: HDFSClient, use_local = False):
     # if file already has instances, only check for addition with API, not locally
     use_local = False if hdfs_client.exists(TMDb_file) and hdfs_client.get_size(TMDb_file) else use_local
     if not use_local:
-        # Define necessary data: filter crew that is involved in movies rated in some available tweet (i.e. in ratings.parquet)
-        ratings_dir = "/data/landing/MovieTweetings/ratings.parquet"
+        # Define necessary data: filter crew that is involved in movies rated in some available tweet (i.e. in ratings.dat)
+        ratings_dir = "/data/landing/MovieTweetings/ratings.dat"
         crew_dir = "/data/landing/IMDb/title.crew.tsv.gz"
         try:
             log.info("Filtering movie's crew from movies already rated")
@@ -72,8 +73,9 @@ def load_TMDb(hdfs_client: HDFSClient, use_local = False):
             crew_reader = hdfs_client.read_file(crew_dir)
             crew_buffer = io.BytesIO(crew_reader)
 
-            # 2. Read Parquet and tsv.gz from buffers
-            df_ratings = pd.read_parquet(rating_buffer, engine='pyarrow')
+            # 2. Read .dat and tsv.gz from buffers
+            # MovieTweetings ratings.dat format: user_id::movie_id::rating::rating_timestamp
+            df_ratings = pd.read_csv(rating_buffer, sep='::', names=['user_id', 'movie_id', 'rating', 'timestamp'], engine='python')
             log.info(df_ratings.head())
 
             df_crew = pd.read_csv(crew_buffer, sep="\t", compression="gzip", dtype=str)

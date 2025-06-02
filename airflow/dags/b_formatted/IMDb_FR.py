@@ -1,32 +1,38 @@
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType, BooleanType, ArrayType
-from dags.utils.postgres_utils import PostgresManager
+from dags.utils.hdfs_utils import HDFSClient
 from dags.utils.other_utils import setup_logging
 from pyspark.sql import functions as F
 from pyspark.sql import SparkSession
-from unidecode import  unidecode
+from unidecode import unidecode
 import subprocess
+import shutil
 import os
 
 # Configure logging
 log = setup_logging(__name__)
 
-def format_IMDb(postgres_manager: PostgresManager):
+# Set the data lake path where data is, and posterior formatted dir
+hdfs_landing = "/data/landing/IMDb/"
+hdfs_formatted = "/data/formatted/IMDb"
+
+def format_IMDb(hdfs_client: HDFSClient):
     """
-    Formats IMDb data according to a common relational data model, using PostgreSQL
+    Formats IMDb data according to a common relational data model, using HDFS
 
     Args:
-        postgres_manager: object to facilitate the interaction with PostgreSQL server
+        hdfs_client: object for interacting with HDFS easily.
     """
 
-    # Clean up temporary files from previous stage
-    subprocess.run(["rm", "-rf", f'/tmp/IMDb/'], check=True)
-
-    hdfs_landing = f"{os.getenv('HDFS_FS_URL')}/data/landing/IMDb/"
+    # Clean up temporary files from previous runs
+    tmp_dir = "/tmp/IMDb"
+    if os.path.exists(tmp_dir):
+        shutil.rmtree(tmp_dir)
+    os.makedirs(tmp_dir, exist_ok=True)
 
     # Format each dataset from IMDb with its corresponding processing
-    format_titleBasics(hdfs_landing, postgres_manager)
-    format_titleCrew(hdfs_landing, postgres_manager)
-    format_nameBasics(hdfs_landing, postgres_manager)
+    format_titleBasics(hdfs_client)
+    format_titleCrew(hdfs_client)
+    format_nameBasics(hdfs_client)
 
 
 def value_formatting(df):
@@ -45,13 +51,12 @@ def value_formatting(df):
     
     return df
 
-def format_titleBasics(landing_path: str, postgres_manager: PostgresManager):
+def format_titleBasics(hdfs_client: HDFSClient):
     """
     Formats title_basics datset from IMDb
 
     Args:
-        landing_path: the directory where title.basics.tsv.gz is located
-        postgres_manager: object to facilitate the interaction with PostgreSQL server
+        hdfs_client: object for interacting with HDFS easily.
     """
 
     spark = None
@@ -59,7 +64,6 @@ def format_titleBasics(landing_path: str, postgres_manager: PostgresManager):
     try:
         # Connection to Spark
         spark = SparkSession.builder \
-            .config("spark.jars", os.getenv('JDBC_URL')) \
             .appName("titleBasicsFormatter") \
             .getOrCreate()
 
@@ -76,12 +80,12 @@ def format_titleBasics(landing_path: str, postgres_manager: PostgresManager):
             StructField("genres", StringType(), True) # includes up to three genres associated with the title
         ])
 
-        titleBasics_path = landing_path + "title.basics.tsv.gz"
+        titleBasics_path = hdfs_landing + "title.basics.tsv.gz"
         df = spark.read.format("csv") \
                         .option("header", True) \
                         .option("sep", "\t") \
                         .schema(schema) \
-                        .load(titleBasics_path)
+                        .load(f"{os.getenv('HDFS_FS_URL')}/{titleBasics_path}")
         
         # 2. Variable Formatting
         # - primaryTitle and originalTitle --> homogenize strings
@@ -105,9 +109,31 @@ def format_titleBasics(landing_path: str, postgres_manager: PostgresManager):
         df.show(5, truncate=False)
         print(df.count())
 
-        # 5. Write to PostgreSQL
-        table_name = f"fmtted_IMDb_titleBasics"
-        postgres_manager.write_dataframe(df, table_name)
+        # 5. Save to parquet and analyze storage
+        tmp_dir = "/tmp/IMDb"
+        os.makedirs(tmp_dir, exist_ok=True)
+        
+        # Get original file size from HDFS
+        original_size = hdfs_client.get_size(titleBasics_path)
+        
+        f_parquet = f"{tmp_dir}/title_basics.parquet"
+        
+        # Write with overwrite mode
+        df.write.mode("overwrite").parquet(f_parquet)
+        
+        # Calculate Parquet directory size
+        parquet_size = 0
+        for dirpath, _, filenames in os.walk(f_parquet):
+            for f in filenames:
+                fp = os.path.join(dirpath, f)
+                parquet_size += os.path.getsize(fp)
+        
+        # Log size comparison
+        log.info(f"Size reduction: {original_size} bytes → {parquet_size} bytes ({(1 - parquet_size/original_size)*100:.1f}% saved)")
+        
+        # Store in HDFS
+        hdfs_client.copy_from_local(f_parquet, hdfs_formatted, overwrite=True)
+        log.info(f"Transferred {f_parquet} to HDFS")
 
     except Exception as e:
         log.error(f"Pipeline failed: {str(e)}", exc_info=True)
@@ -118,13 +144,12 @@ def format_titleBasics(landing_path: str, postgres_manager: PostgresManager):
         log.info("Spark session closed.")
 
 
-def format_titleCrew(landing_path: str, postgres_manager: PostgresManager):
+def format_titleCrew(hdfs_client: HDFSClient):
     """
     Formats titleCrew datset from IMDb
 
     Args:
-        landing_path: the directory where title.crew.tsv.gz is located
-        postgres_manager: object to facilitate the interaction with PostgreSQL server
+        hdfs_client: object for interacting with HDFS easily.
     """
 
     spark = None
@@ -132,7 +157,6 @@ def format_titleCrew(landing_path: str, postgres_manager: PostgresManager):
     try:
         # Connection to Spark
         spark = SparkSession.builder \
-            .config("spark.jars", os.getenv('JDBC_URL')) \
             .appName("titleCrewFormatter") \
             .getOrCreate()
 
@@ -143,12 +167,12 @@ def format_titleCrew(landing_path: str, postgres_manager: PostgresManager):
             StructField("writers", StringType(), True)    # writer(s) of the given title
         ])
 
-        titleCrew_path = landing_path + "title.crew.tsv.gz"
+        titleCrew_path = hdfs_landing + "title.crew.tsv.gz"
         df = spark.read.format("csv") \
                         .option("header", True) \
                         .option("sep", "\t") \
                         .schema(schema) \
-                        .load(titleCrew_path)
+                        .load(f"{os.getenv('HDFS_FS_URL')}/{titleCrew_path}")
         
         # 2. Value Formatting
         df = value_formatting(df)
@@ -165,9 +189,31 @@ def format_titleCrew(landing_path: str, postgres_manager: PostgresManager):
         df.show(5, truncate=False)
         print(df.count())
 
-        # 5. Write to PostgreSQL
-        table_name = f"fmtted_IMDb_titleCrew"
-        postgres_manager.write_dataframe(df, table_name)
+        # 5. Save to parquet and analyze storage
+        tmp_dir = "/tmp/IMDb"
+        os.makedirs(tmp_dir, exist_ok=True)
+        
+        # Get original file size from HDFS
+        original_size = hdfs_client.get_size(titleCrew_path)
+        
+        f_parquet = f"{tmp_dir}/title_crew.parquet"
+        
+        # Write with overwrite mode
+        df.write.mode("overwrite").parquet(f_parquet)
+        
+        # Calculate Parquet directory size
+        parquet_size = 0
+        for dirpath, _, filenames in os.walk(f_parquet):
+            for f in filenames:
+                fp = os.path.join(dirpath, f)
+                parquet_size += os.path.getsize(fp)
+        
+        # Log size comparison
+        log.info(f"Size reduction: {original_size} bytes → {parquet_size} bytes ({(1 - parquet_size/original_size)*100:.1f}% saved)")
+        
+        # Store in HDFS
+        hdfs_client.copy_from_local(f_parquet, hdfs_formatted, overwrite=True)
+        log.info(f"Transferred {f_parquet} to HDFS")
 
     except Exception as e:
         log.error(f"Pipeline failed: {str(e)}", exc_info=True)
@@ -177,13 +223,12 @@ def format_titleCrew(landing_path: str, postgres_manager: PostgresManager):
             spark.stop()
         log.info("Spark session closed.")
 
-def format_nameBasics(landing_path: str, postgres_manager: PostgresManager):
+def format_nameBasics(hdfs_client: HDFSClient):
     """
     Formats nameBasics datset from IMDb
 
     Args:
-        landing_path: the directory where name.basics.tsv.gz is located
-        postgres_manager: object to facilitate the interaction with PostgreSQL server
+        hdfs_client: object for interacting with HDFS easily.
     """
 
     spark = None
@@ -191,7 +236,6 @@ def format_nameBasics(landing_path: str, postgres_manager: PostgresManager):
     try:
         # Connection to Spark
         spark = SparkSession.builder \
-            .config("spark.jars", os.getenv('JDBC_URL')) \
             .appName("nameBasicsFormatter") \
             .getOrCreate()
 
@@ -205,12 +249,12 @@ def format_nameBasics(landing_path: str, postgres_manager: PostgresManager):
             StructField("knownForTitles", StringType(), True)      # titles the person is known for
         ])
 
-        nameBasics_path = landing_path + "name.basics.tsv.gz"
+        nameBasics_path = hdfs_landing + "name.basics.tsv.gz"
         df = spark.read.format("csv") \
                         .option("header", True) \
                         .option("sep", "\t") \
                         .schema(schema) \
-                        .load(nameBasics_path)
+                        .load(f"{os.getenv('HDFS_FS_URL')}/{nameBasics_path}")
         
         # 2. Value Formatting
         df = value_formatting(df)
@@ -231,9 +275,31 @@ def format_nameBasics(landing_path: str, postgres_manager: PostgresManager):
         df.show(5, truncate=False)
         print(df.count())
 
-        # 5. Write to PostgreSQL
-        table_name = f"fmtted_IMDb_nameBasics"
-        postgres_manager.write_dataframe(df, table_name)
+        # 5. Save to parquet and analyze storage
+        tmp_dir = "/tmp/IMDb"
+        os.makedirs(tmp_dir, exist_ok=True)
+        
+        # Get original file size from HDFS
+        original_size = hdfs_client.get_size(nameBasics_path)
+        
+        f_parquet = f"{tmp_dir}/name_basics.parquet"
+        
+        # Write with overwrite mode
+        df.write.mode("overwrite").parquet(f_parquet)
+        
+        # Calculate Parquet directory size
+        parquet_size = 0
+        for dirpath, _, filenames in os.walk(f_parquet):
+            for f in filenames:
+                fp = os.path.join(dirpath, f)
+                parquet_size += os.path.getsize(fp)
+        
+        # Log size comparison
+        log.info(f"Size reduction: {original_size} bytes → {parquet_size} bytes ({(1 - parquet_size/original_size)*100:.1f}% saved)")
+        
+        # Store in HDFS
+        hdfs_client.copy_from_local(f_parquet, hdfs_formatted, overwrite=True)
+        log.info(f"Transferred {f_parquet} to HDFS")
 
     except Exception as e:
         log.error(f"Pipeline failed: {str(e)}", exc_info=True)
