@@ -169,7 +169,7 @@ def apply_constraints_namebasics(df: F.DataFrame) -> F.DataFrame:
         F.col("birthYear").isNull() | F.col("deathYear").isNull() | (F.col("birthYear") <= F.col("deathYear"))
     )
 
-    # Clean and validate knownForTitles array
+    # clean and validate knownForTitles array
     df = df.withColumn("knownForTitles", F.expr("filter(knownForTitles, x -> x is not null and x != '')"))
     known_condition = (
         (F.size(F.col("knownForTitles")) == 0) |

@@ -56,6 +56,8 @@ def quality_TMDb(hdfs_client: HDFSClient):
             Q_cm_Att = compute_column_completeness(df)
             output_lines = ["\nColumn completeness report:"]
             output_lines.append(f" {'-' * 36} \n{'Column':<25} | {'Missing (%)':>10} \n{'-' * 36}")
+            missing_ratios = {row['column']: row['missing_ratio'] for row in Q_cm_Att.collect()}
+            popularity_null_ratio = missing_ratios.get('popularity', 0)
             for row in Q_cm_Att.collect():
                 missing_pct = f"{row['missing_ratio'] * 100:.2f}%"
                 output_lines.append(f"{row['column']:<25} | {missing_pct:>10} \n{'-' * 36}")
@@ -67,7 +69,7 @@ def quality_TMDb(hdfs_client: HDFSClient):
 
             # 4. Apply Constraints
             log.info(f"Applying constraints to {file}...")
-            df = constraints(df)
+            df = constraints(df, popularity_null_ratio=popularity_null_ratio)
 
             # Remove duplicates
             df = df.dropDuplicates()
@@ -88,7 +90,7 @@ def quality_TMDb(hdfs_client: HDFSClient):
             log.info("Spark session closed.")
 
 
-def apply_constraints_TMDb(df: DataFrame) -> DataFrame:
+def apply_constraints_TMDb(df: DataFrame, popularity_null_ratio: float = 0.0) -> DataFrame:
     """
     Apply constraints specific to the TMDb dataset.
     """
@@ -109,10 +111,21 @@ def apply_constraints_TMDb(df: DataFrame) -> DataFrame:
     # adult must be 'true' or 'false'
     df = df.filter(F.col("adult").isin([True, False]))
 
-    # Filtrar filas donde known_for no empiece con 'tt'
+    # known_for must start with 'tt'
     df = df.filter(F.col("known_for").startswith("tt"))
 
-    # Eliminar la columna original_name si existe
+    # remove original_name 
     if "original_name" in df.columns:
         df = df.drop("original_name")
+
+    # constraints decided based on the previous exploratory analysis:
+    # if the popularity column has a low ratio of nulls (<=10%), we can eliminate outliers
+    # by keeping only the values between the 5th and 95th percentiles
+    # if the ratio of nulls is higher, we do not remove outliers to avoid losing too much data
+    THRESHOLD_NULLS = 0.1
+    if popularity_null_ratio <= THRESHOLD_NULLS:
+        # Calcular percentiles 5 y 95
+        quantiles = df.approxQuantile("popularity", [0.05, 0.95], 0.01)
+        lower, upper = quantiles
+        df = df.filter((F.col("popularity") >= lower) & (F.col("popularity") <= upper))
     return df
