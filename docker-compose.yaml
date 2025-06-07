@@ -135,6 +135,22 @@ services:
       retries: 12
     restart: unless-stopped
 
+  graphdb-init:
+    image: python:3.9-slim
+    container_name: graphdb-init
+    networks:
+      - bdanet
+    volumes:
+      - ./airflow/dags/d_explotation/setup_graphdb.py:/app/setup_graphdb.py
+      - ./airflow/dags/d_explotation/moviekg-config.ttl:/app/moviekg-config.ttl
+      - ./airflow/dags/d_explotation/graph_model.ttl:/app/graph_model.ttl
+    working_dir: /app
+    command: >
+      bash -c "pip install requests && python setup_graphdb.py"
+    depends_on:
+      graphdb:
+        condition: service_healthy
+
   # streamlit-app:
   #   build: ./streamlit-app
   #   restart: always

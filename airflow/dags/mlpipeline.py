@@ -25,10 +25,11 @@ default_args = {
 with DAG(
     'ML_DataOps',
     default_args=default_args,
-    schedule_interval='@weekly',
+    schedule_interval=None,
     catchup=False,
     tags=['ML_DataOps'],
     default_view='graph',
+    max_active_tasks=2
 ) as dag:
 
     # Ingestion tasks -> HDFS
@@ -40,16 +41,15 @@ with DAG(
     # Trusted tasks -> HDFS
     trusted_MovieTweetings, trusted_IMDb, trusted_TMDb = trusted_zone.create_tasks(dag, hdfs_client)
 
+    # Explotation tasks -> HDFS
+    IMDB_crew_task,IMDB_name_task,IMDB_title_task,TMDB_task,MT_movies_task,MT_ratings_task = explotation_zone.create_tasks(dag)
+
     [ingest_MovieTweetings, ingest_IMDb] >> ingest_TMDb
 
     # Process all data ONLY after final ingestion completes
     ingest_TMDb >> [format_MovieTweetings, format_IMDb, format_TMDb]
 
     # Independent processing chains per data source
-    format_MovieTweetings >> trusted_MovieTweetings
-    format_IMDb >> trusted_IMDb
-    format_TMDb >> trusted_TMDb
-
-    # MARTHA
-    # [ingest_MovieTweetings, ingest_IMDb] >> ingest_TMDb
-    # ingest_TMDb >> format_MovieTweetings >> format_IMDb >> format_TMDb >> trusted_MovieTweetings >> trusted_IMDb >> trusted_TMDb
+    format_MovieTweetings >> trusted_MovieTweetings >> [MT_ratings_task,MT_movies_task]
+    format_IMDb >> trusted_IMDb >> [IMDB_title_task,IMDB_crew_task,IMDB_name_task]
+    format_TMDb >> trusted_TMDb >> [TMDB_task]

@@ -3,7 +3,8 @@
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
-# Classes
+#-------------- CLASSES -----------------#
+
 ex:Movie a rdfs:Class ;
     rdfs:label "Movie" .
 
@@ -19,20 +20,23 @@ ex:Rating a rdfs:Class ;
 ex:Genre a rdfs:Class ;
     rdfs:label "Genre" .
 
-# Properties
-ex:imdbId a rdf:Property ;
-    rdfs:domain ex:Movie ;
-    rdfs:range xsd:string .
+ex:Profession a rdfs:Class ;
+    rdfs:label "Profession" .
 
-ex:tmdbId a rdf:Property ;
+ex:Known_for a rdfs:Class ;
+    rdfs:label "Known_for" .
+
+ex:Participates a rdfs:Class ;
+    rdfs:label "Participates" .
+
+#-------------- PROPERTIES  -----------------#
+
+#-------------- 1.Attributes  ---------------#
+ex:movieId a rdf:Property ;
     rdfs:domain ex:Movie ;
     rdfs:range xsd:string .
 
 ex:title a rdf:Property ;
-    rdfs:domain ex:Movie ;
-    rdfs:range xsd:string .
-
-ex:originalTitle a rdf:Property ;
     rdfs:domain ex:Movie ;
     rdfs:range xsd:string .
 
@@ -44,74 +48,110 @@ ex:startYear a rdf:Property ;
     rdfs:domain ex:Movie ;
     rdfs:range xsd:integer .
 
-ex:endYear a rdf:Property ;
+ex:runtime a rdf:Property ;
     rdfs:domain ex:Movie ;
     rdfs:range xsd:integer .
 
-ex:runtimeMinutes a rdf:Property ;
-    rdfs:domain ex:Movie ;
-    rdfs:range xsd:integer .
-
-ex:hasGenre a rdf:Property ;
-    rdfs:domain ex:Movie ;
-    rdfs:range ex:Genre .
-
-ex:genreName a rdf:Property ;
-    rdfs:domain ex:Genre ;
-    rdfs:range xsd:string .
-
-ex:directedBy a rdf:Property ;
-    rdfs:domain ex:Movie ;
-    rdfs:range ex:Person .
-
-ex:writtenBy a rdf:Property ;
-    rdfs:domain ex:Movie ;
-    rdfs:range ex:Person .
-
-ex:personName a rdf:Property ;
-    rdfs:domain ex:Person ;
-    rdfs:range xsd:string .
-
-ex:birthYear a rdf:Property ;
-    rdfs:domain ex:Person ;
-    rdfs:range xsd:integer .
-
-ex:deathYear a rdf:Property ;
-    rdfs:domain ex:Person ;
-    rdfs:range xsd:integer .
-
-ex:primaryProfession a rdf:Property ;
-    rdfs:domain ex:Person ;
-    rdfs:range xsd:string .
-
-ex:knownFor a rdf:Property ;
-    rdfs:domain ex:Person ;
-    rdfs:range ex:Movie .
+# User attributes
 
 ex:userId a rdf:Property ;
     rdfs:domain ex:User ;
     rdfs:range xsd:string .
 
-ex:twitterId a rdf:Property ;
-    rdfs:domain ex:User ;
+# Person attributes
+ex:personId a rdf:Property ;
+    rdfs:domain ex:Person ;
     rdfs:range xsd:string .
 
-ex:ratingValue a rdf:Property ;
-    rdfs:domain ex:Rating ;
+ex:gender a rdf:Property ;
+    rdfs:domain ex:Person ;
+    rdfs:range xsd:string .
+
+ex:name a rdf:Property ;
+    rdfs:domain ex:Person ;
+    rdfs:range xsd:string .
+
+ex:popularity a rdf:Property ;
+    rdfs:domain ex:Person ;
     rdfs:range xsd:float .
 
-ex:ratingTimestamp a rdf:Property ;
+ex:deathYear a rdf:Property ;
+    rdfs:domain ex:Person ;
+    rdfs:range xsd:integer .
+
+ex:birthYear a rdf:Property ;
+    rdfs:domain ex:Person ;
+    rdfs:range xsd:integer .
+
+# Genre attributes
+
+ex:genre_name a rdf:Property ;
+    rdfs:domain ex:Genre ;
+    rdfs:range xsd:string .
+
+# Rating attributes
+
+ex:rating_date a rdf:Property ;
     rdfs:domain ex:Rating ;
     rdfs:range xsd:dateTime .
 
-ex:ratedBy a rdf:Property ;
+ex:rating_score a rdf:Property ;
     rdfs:domain ex:Rating ;
-    rdfs:range ex:User .
+    rdfs:range xsd:integer .
 
-ex:ratedMovie a rdf:Property ;
+# Known_for attributes
+
+ex:known_for_popularity a rdf:Property ;
+    rdfs:domain ex:Known_for ;
+    rdfs:range xsd:float .
+
+# Profession attributes
+ex:profession_name a rdf:Property ;
+    rdfs:domain ex:Profession ;
+    rdfs:range xsd:string .
+
+#-------------- 2.Relations  -------------#
+
+# Person participation relations
+
+ex:participates_person a rdf:Property ;
+    rdfs:domain ex:Participates ;
+    rdfs:range ex:Person .
+
+ex:participates_role a rdf:Property ;
+    rdfs:domain ex:Participates ;
+    rdfs:range ex:Profession .
+
+ex:participates_movie a rdf:Property ;
+    rdfs:domain ex:Participates ;
+    rdfs:range ex:Movie .
+
+ex:primary_profession a rdf:Property ;
+    rdfs:domain ex:Person ;
+    rdfs:range ex:Profession .
+
+ex:alternative_profession a rdf:Property ;
+    rdfs:domain ex:Person ;
+    rdfs:range ex:Profession .
+
+ex:isKnownfor a rdf:Property ;
+    rdfs:domain ex:Person ;
+    rdfs:range ex:Known_for .
+
+ex:known_for_movie a rdf:Property ;
+    rdfs:domain ex:Known_for ;
+    rdfs:range ex:Movie .
+
+# Movie and rating relations
+ex:has_genre a rdf:Property ;
+    rdfs:domain ex:Movie ;
+    rdfs:range ex:Genre .
+
+ex:rating_movie a rdf:Property ;
     rdfs:domain ex:Rating ;
     rdfs:range ex:Movie .
 
-ex:popularity a rdf:Property ;
-    rdfs:domain ex:Movie ;
-    rdfs:range xsd:float .
+ex:rates_movie a rdf:Property ;
+    rdfs:domain ex:User ;
+    rdfs:range ex:Rating .
+

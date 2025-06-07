@@ -20,3 +20,4 @@ pyspark
 scikit-learn
 unidecode
 plotly
+rdflib

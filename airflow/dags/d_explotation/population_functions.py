@@ -8,22 +8,33 @@ import requests
 from pyspark.sql.types import StringType
 from pyspark.sql.functions import udf, struct
 import logging
+import os
 
 # Configuration
 GRAPHDB_ENDPOINT = "http://graphdb:7200/repositories/moviekg/statements"
-BATCH_SIZE = 1000
+BATCH_SIZE = 5000
 MAX_RETRIES = 3
 RETRY_DELAY = 5  # seconds
+
+# HDFS directories
+HDFS_DIR = f"{os.getenv('HDFS_FS_URL')}/data/trusted/"
+
+# IMDB
+IMDB_NAME = HDFS_DIR + 'IMDb/name_basics.parquet'
+IMDB_TITLE = HDFS_DIR + 'IMDb/title_basics.parquet'
+IMDB_CREW = HDFS_DIR + 'IMDb/title_crew.parquet'
+
+# TMDB
+TMDB = HDFS_DIR + 'TMDb/crew_data.parquet'
+
+# MovieTweetings
+MT_MOVIES = HDFS_DIR + 'MovieTweetings/movies.parquet'
+MT_RATINGS = HDFS_DIR + 'MovieTweetings/ratings.parquet'
 
 # Namespaces
 EX = Namespace("http://example.org/moviekg/")
 XSD = Namespace("http://www.w3.org/2001/XMLSchema#")
 
-# Initialize Spark
-spark = SparkSession.builder \
-    .appName("KG-Population") \
-    .config("spark.executor.memory", "2g") \
-    .getOrCreate()
 
 def insert_to_graphdb(turtle_data):
     """Insert Turtle data into GraphDB with retry logic"""
@@ -48,31 +59,51 @@ def insert_to_graphdb(turtle_data):
     logging.info(f"❌ Failed to insert batch after {MAX_RETRIES} attempts")
     return False
 
-def process_minibatch(df, process_function):
-    """Process Spark DataFrame minibatch and insert to GraphDB"""
 
-    @udf(StringType())
-    def row_to_turtle(row):
-        g = Graph()
-        g.bind("ex", EX)
-        g.bind("xsd", XSD)
-        try:
-            process_function(g, row)
-            return g.serialize(format="turtle")
-        except Exception as e:
-            logging.info(f"⚠️ Row processing error: {str(e)}")
-            return None
+def execute_graph_population(source_path, graph_creation_function):
+    """Initialize SparkSession locally and handle graph population"""
+    spark = None
+    try:
+        # Create SparkSession inside the function
+        spark = SparkSession.builder \
+            .config("spark.executorEnv.PYTHONPATH", "/opt/airflow/dags") \
+            .appName(f"KG-Population-{graph_creation_function.__name__}") \
+            .config("spark.executor.memory", "2g") \
+            .getOrCreate()
 
-    # Process batch
-    turtle_df = df.withColumn("turtle", row_to_turtle(struct(*df.columns)))
-    valid_batches = turtle_df.filter("turtle IS NOT NULL").select("turtle")
+        spark.sparkContext.addPyFile("/opt/airflow/dags/d_explotation/population_functions.py")
 
-    # Insert to GraphDB
-    for turtle_row in valid_batches.collect():
-        if turtle_row["turtle"]:
-            success = insert_to_graphdb(turtle_row["turtle"])
-            if not success:
-                logging.info("❌ Batch insertion failed, skipping...")
+        logging.info(f"📥 Processing {source_path}")
+        df = spark.read.parquet(source_path)
+        total_count = df.count()
+        logging.info(f"Total records to process: {total_count}")
+
+        @udf(StringType())
+        def row_to_turtle(row):
+            g = Graph()
+            g.bind("ex", EX)
+            g.bind("xsd", XSD)
+            try:
+                graph_creation_function(g, row)
+                return g.serialize(format="turtle")
+            except Exception as e:
+                logging.warning(f"⚠️ Row processing error: {str(e)} on row {row}")
+                return None
+
+        def process_partition(partition):
+            for row in partition:
+                turtle_data = row['turtle']
+                if turtle_data:
+                    insert_to_graphdb(turtle_data)
+
+        turtle_df = df.withColumn("turtle", row_to_turtle(struct(*df.columns)))
+        valid_turtle_df = turtle_df.filter("turtle IS NOT NULL").select("turtle")
+        valid_turtle_df.foreachPartition(process_partition)
+
+        logging.info(f"✅ Finished processing {source_path}")
+    finally:
+        if spark:
+            spark.stop()  # Ensure session is stopped
 
 def create_graph_TMDB(g, row):
     if row['imdb_id'].startswith('nm'):
@@ -249,16 +280,24 @@ def create_graph_crew(g, row):
 
     return g
 
-def process_source(source,process_func):
-    logging.info(f"📥 Processing {source}")
-    df = spark.read.parquet(source)
-    for i in range(0, df.count(), BATCH_SIZE):
-        batch = df.limit(BATCH_SIZE).offset(i)
-        process_minibatch(batch, process_func)
-        logging.info(f"✅ Processed batch {i // BATCH_SIZE + 1} of {source}")
-
 
 def to_graph_IMDB_title():
-    source=''
-    process_func = lambda x: x
-    process_source(source,process_func)
+    execute_graph_population(IMDB_TITLE, create_graph_titles)
+
+def to_graph_IMDB_crew():
+    execute_graph_population(IMDB_CREW, create_graph_crew)
+
+def to_graph_IMDB_name():
+    execute_graph_population(IMDB_NAME, create_graph_name)
+
+def to_graph_MT_movies():
+    execute_graph_population(MT_MOVIES, create_graph_Movies)
+
+def to_graph_MT_rating():
+    execute_graph_population(MT_RATINGS, create_graph_Rating)
+
+def to_graph_TMDB():
+    execute_graph_population(TMDB, create_graph_TMDB)
+
+
+
