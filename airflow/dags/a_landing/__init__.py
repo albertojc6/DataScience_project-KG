@@ -1,21 +1,17 @@
 from airflow.operators.python import PythonOperator # type:ignore
 from .MovieTweetings_DL import load_MovieTweetings
+from dags.utils import HDFSClient
 from .IMDb_DL import load_IMDb
 from .TMDb_DL import load_TMDb
-from dags.utils import HDFSClient
 from airflow import DAG
 
-
-hdfs_client = HDFSClient()
-
-def create_tasks(dag: DAG):
+def create_tasks(dag: DAG, hdfs_client: HDFSClient):
 
     ingest_MovieTweetings = PythonOperator(
         task_id='ingest_MovieTweetings',
         python_callable=load_MovieTweetings,
         op_kwargs={
-            'hdfs_client': hdfs_client,
-            'max_rows': int(2e4) #20k ratings/tweets
+            'hdfs_client': hdfs_client
         },
         dag=dag
     )

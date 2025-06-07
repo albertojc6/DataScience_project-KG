@@ -1,49 +1,60 @@
 from pyspark.sql import functions as F
 from pyspark.sql import SparkSession
-from dags.utils.postgres_utils import PostgresManager
 from dags.utils.other_utils import setup_logging
 from dags.c_trusted.quality_utils import *
+from dags.utils.hdfs_utils import HDFSClient
 import os
+import shutil
 
 # Configure logging
 log = setup_logging(__name__)
 
-def quality_MovieTweetings(postgres_manager: PostgresManager):
+# Set the HDFS paths
+hdfs_formatted = "/data/formatted/MovieTweetings"
+hdfs_trusted = "/data/trusted/MovieTweetings"
+
+def quality_MovieTweetings(hdfs_client: HDFSClient):
     """
     Improves and analyzes quality of the MovieTweetings datasets (movies, users, ratings).
+    Reads from formatted Parquet files in HDFS and writes trusted data back to HDFS.
     """
+    # Clean up temporary files from previous runs
+    tmp_dir = "/tmp/MovieTweetings"
+    if os.path.exists(tmp_dir):
+        shutil.rmtree(tmp_dir)
+    os.makedirs(tmp_dir, exist_ok=True)
+
     datasets = [
-        {"input_table": "fmtted_MovTweet_movies", "output_table": "trusted_MovTweet_movies", "constraints": apply_constraints_movies},
-        {"input_table": "fmtted_MovTweet_users", "output_table": "trusted_MovTweet_users", "constraints": apply_constraints_users},
-        {"input_table": "fmtted_MovTweet_ratings", "output_table": "trusted_MovTweet_ratings", "constraints": apply_constraints_ratings}
+        {"file": "movies.parquet", "constraints": apply_constraints_movies},
+        {"file": "users.parquet", "constraints": apply_constraints_users},
+        {"file": "ratings.parquet", "constraints": apply_constraints_ratings}
     ]
 
     for dataset in datasets:
-        input_table = dataset["input_table"]
-        output_table = dataset["output_table"]
+        file = dataset["file"]
         constraints = dataset["constraints"]
 
-        log.info(f"Processing dataset: {input_table}...")
+        log.info(f"Processing dataset: {file}...")
 
         # Initialize Spark session
         spark = SparkSession.builder \
-            .config("spark.jars", os.getenv('JDBC_URL')) \
-            .appName(f"Trusted_{input_table}") \
+            .appName(f"Trusted_{file}") \
             .getOrCreate()
 
         try:
-            # 1. Read the table from PostgreSQL
-            df = postgres_manager.read_table(spark, input_table)
+            # 1. Read the Parquet file from HDFS
+            input_path = f"{os.getenv('HDFS_FS_URL')}/{hdfs_formatted}/{file}"
+            df = spark.read.parquet(input_path)
             df.show(5)
 
             # 2. Generate Data Profiles (descriptive statistics)
-            log.info(f"Generating Data Profiles for {input_table}...")
+            log.info(f"Generating Data Profiles for {file}...")
             results = descriptive_profile(df)
             profile_print = print_dataset_profile(results)
-            print(f"\nDataset profile for {input_table}:\n{'=' * 40}\n{profile_print}")
+            print(f"\nDataset profile for {file}:\n{'=' * 40}\n{profile_print}")
 
             # 3. Computation of Data Quality Metrics
-            log.info(f"Computing Data Quality Metrics for {input_table}...")
+            log.info(f"Computing Data Quality Metrics for {file}...")
             Q_cm_Att = compute_column_completeness(df)
             output_lines = ["\nColumn completeness report:"]
             output_lines.append(f" {'-' * 36} \n{'Column':<25} | {'Missing (%)':>10} \n{'-' * 36}")
@@ -57,18 +68,22 @@ def quality_MovieTweetings(postgres_manager: PostgresManager):
             print(f"\nRelation's Redundancy (ratio of duplicates): {Q_r:.4f}")
 
             # 4. Apply Constraints
-            log.info(f"Applying constraints to {input_table}...")
+            log.info(f"Applying constraints to {file}...")
             df = constraints(df)
 
             # Remove duplicates
             df = df.dropDuplicates()
 
-            # Write the cleaned data to PostgreSQL
-            log.info(f"Writing trusted {input_table} dataset to PostgreSQL...")
-            postgres_manager.write_dataframe(df, output_table)
+            # 5. Save to parquet        
+            f_parquet = f"{tmp_dir}/{file}"
+            df.write.mode("overwrite").parquet(f_parquet)
+        
+            # Store in HDFS
+            hdfs_client.copy_from_local(f_parquet, hdfs_trusted, overwrite=True)
+            log.info(f"Transferred {f_parquet} to HDFS")
 
         except Exception as e:
-            log.error(f"Pipeline failed for {input_table}: {str(e)}", exc_info=True)
+            log.error(f"Pipeline failed for {file}: {str(e)}", exc_info=True)
             raise
         finally:
             spark.stop()

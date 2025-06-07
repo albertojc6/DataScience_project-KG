@@ -1,20 +1,22 @@
 from airflow.operators.python import PythonOperator #type:ignore
-from dags.utils.postgres_utils import PostgresManager
 
 from .MovieTweetings_TR import quality_MovieTweetings
 from .IMDb_TR import quality_IMDb
 from .TMDb_TR import quality_TMDb
 
-# Initialize Postgres Manager
-postgres_manager = PostgresManager()
-
-def create_tasks(dag):
-
+def create_tasks(dag, hdfs_client):
+    """
+    Creates the trusted zone tasks for all data sources.
+    
+    Args:
+        dag: The DAG object
+        hdfs_client: HDFSClient instance from MLPipeline
+    """
     trusted_MovieTweetings = PythonOperator(
         task_id='trusted_MovieTweetings',
         python_callable=quality_MovieTweetings,
         op_kwargs={
-            'postgres_manager': postgres_manager
+            'hdfs_client': hdfs_client
         },
         dag=dag
     )
@@ -23,7 +25,7 @@ def create_tasks(dag):
         task_id='trusted_IMDb',
         python_callable=quality_IMDb,
         op_kwargs={
-            'postgres_manager': postgres_manager
+            'hdfs_client': hdfs_client
         },
         dag=dag
     )
@@ -32,7 +34,7 @@ def create_tasks(dag):
         task_id='trusted_TMDb',
         python_callable=quality_TMDb,
         op_kwargs={
-            'postgres_manager': postgres_manager
+            'hdfs_client': hdfs_client
         },
         dag=dag
     )
