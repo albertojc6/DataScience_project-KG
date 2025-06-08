@@ -50,13 +50,13 @@ def insert_to_graphdb(turtle_data):
             if response.status_code == 204:
                 return True
             else:
-                logging.info(f"⚠️ Attempt {attempt + 1} failed: {response.status_code} - {response.text}")
+                logging.info(f" Attempt {attempt + 1} failed: {response.status_code} - {response.text}")
         except Exception as e:
-            logging.info(f"⚠️ Attempt {attempt + 1} failed: {str(e)}")
+            logging.info(f" Attempt {attempt + 1} failed: {str(e)}")
 
         time.sleep(RETRY_DELAY * (attempt + 1))
 
-    logging.info(f"❌ Failed to insert batch after {MAX_RETRIES} attempts")
+    logging.info(f"Failed to insert batch after {MAX_RETRIES} attempts")
     return False
 
 
@@ -87,7 +87,7 @@ def execute_graph_population(source_path, graph_creation_function):
                 graph_creation_function(g, row)
                 return g.serialize(format="turtle")
             except Exception as e:
-                logging.warning(f"⚠️ Row processing error: {str(e)} on row {row}")
+                logging.warning(f"Row processing error: {str(e)} on row {row}")
                 return None
 
         def process_partition(partition):
@@ -110,7 +110,7 @@ def execute_graph_population(source_path, graph_creation_function):
         valid_turtle_df = turtle_df.filter("turtle IS NOT NULL").select("turtle")
         valid_turtle_df.foreachPartition(process_partition)
 
-        logging.info(f"✅ Finished processing {source_path}")
+        logging.info(f"Finished processing {source_path}")
     finally:
         if spark:
             spark.stop()  # Ensure session is stopped

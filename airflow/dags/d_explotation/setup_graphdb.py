@@ -25,12 +25,12 @@ def wait_for_graphdb():
         try:
             response = requests.get(f"{GDB_BASE_URL}/rest/repositories")
             if response.status_code == 200:
-                logging.info("✅ GraphDB is up and running.")
+                logging.info(" GraphDB is up and running.")
                 return True
         except requests.exceptions.ConnectionError:
             pass # Service is not yet available
         time.sleep(5)
-    logging.error("❌ GraphDB did not become available within the time limit.")
+    logging.error(" GraphDB did not become available within the time limit.")
     return False
 
 def create_repository():
@@ -43,14 +43,14 @@ def create_repository():
             response = requests.post(url, files=files)
 
         if response.status_code == 201:
-            logging.info(f"✅ Repository '{REPO_ID}' created successfully.")
+            logging.info(f" Repository '{REPO_ID}' created successfully.")
         elif response.status_code == 409:
-            logging.info(f"✅ Repository '{REPO_ID}' already exists.")
+            logging.info(f" Repository '{REPO_ID}' already exists.")
         else:
-            logging.error(f"❌ Error creating repository: {response.status_code} - {response.text}")
+            logging.error(f" Error creating repository: {response.status_code} - {response.text}")
             sys.exit(1) # Exit with an error code
     except FileNotFoundError:
-        logging.error(f"❌ Repository configuration file not found: {REPO_CONFIG_FILE}")
+        logging.error(f" Repository configuration file not found: {REPO_CONFIG_FILE}")
         sys.exit(1)
 
 
@@ -65,12 +65,12 @@ def upload_schema():
         response = requests.post(url, headers=headers, data=data)
 
         if response.status_code == 204:
-            logging.info("✅ Schema uploaded successfully.")
+            logging.info(" Schema uploaded successfully.")
         else:
-            logging.error(f"❌ Schema upload failed: {response.status_code} - {response.text}")
+            logging.error(f" Schema upload failed: {response.status_code} - {response.text}")
             sys.exit(1)
     except FileNotFoundError:
-        logging.error(f"❌ Schema file not found: {SCHEMA_FILE}")
+        logging.error(f" Schema file not found: {SCHEMA_FILE}")
         sys.exit(1)
 
 
@@ -78,4 +78,4 @@ if __name__ == "__main__":
     if wait_for_graphdb():
         create_repository()
         upload_schema()
-        logging.info("🎉 GraphDB initialization complete.")
+        logging.info(" GraphDB initialization complete.")
