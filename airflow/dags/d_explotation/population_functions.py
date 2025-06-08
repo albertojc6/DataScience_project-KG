@@ -172,7 +172,7 @@ def create_graph_Movies(g, row):
 
         genres = row['genres']
         # Check if 'genres' is a list and is not empty
-        if isinstance(genres, np.ndarray):
+        if isinstance(genres, (list, np.ndarray)):
             for genre in genres:
                 # It's also good practice to check the genre itself isn't empty
                 if genre and pd.notna(genre):
@@ -200,7 +200,7 @@ def create_graph_name(g, row):
             g.add((person_uri, EX.deathYear, Literal(int(row['deathYear']), datatype=XSD.integer)))
 
         professions = row['primaryProfession']
-        if isinstance(professions, np.ndarray):
+        if isinstance(professions, (list, np.ndarray)):
             for i, profession in enumerate(professions):
                 profession_uri = URIRef(f"{EX}Profession/{profession}")
                 g.add((profession_uri, RDF.type, EX.Profession))
@@ -212,7 +212,7 @@ def create_graph_name(g, row):
 
                     known_for_titles = row['knownForTitles']
 
-                    if isinstance(known_for_titles, np.ndarray):
+                    if isinstance(known_for_titles, (list, np.ndarray)):
 
                         for known_for_title in known_for_titles:
                             movie_uri = URIRef(f"{EX}Movie/{known_for_title}")
@@ -241,7 +241,7 @@ def create_graph_titles(g, row):
 
         genres = row['genres']
         # Check if 'genres' is a list and is not empty
-        if isinstance(genres, np.ndarray):
+        if isinstance(genres, (list, np.ndarray)):
             for genre in genres:
                 # It's also good practice to check the genre itself isn't empty
                 if genre and pd.notna(genre):
@@ -262,7 +262,7 @@ def create_graph_crew(g, row):
         directors = row['directors']
         writers = row['writers']
 
-        if isinstance(directors, np.ndarray):
+        if isinstance(directors, (list, np.ndarray)):
             for director in directors:
                 person_uri = URIRef(f"{EX}Person/{director}")
                 g.add((person_uri, RDF.type, EX.Person))
@@ -275,7 +275,7 @@ def create_graph_crew(g, row):
                 g.add((participates_uri, EX.participates_person, person_uri))
                 g.add((participates_uri, EX.participates_movie, movie_uri))
 
-        if isinstance(writers, np.ndarray):
+        if isinstance(writers, (list, np.ndarray)):
             for writer in writers:
                 person_uri = URIRef(f"{EX}Person/{writer}")
                 g.add((person_uri, RDF.type, EX.Person))
