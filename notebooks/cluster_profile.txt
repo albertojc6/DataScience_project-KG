@@ -1,0 +1,104 @@
+Enhanced Cluster Profiling Report
+==================================================
+Total movies: 60001
+Number of clusters: 5
+
+Cluster Size Distribution:
+cluster
+0    18748
+1     2370
+2     6683
+3    12650
+4    19550
+
+Detailed Cluster Analysis:
+
+==================================================
+Cluster 0 (Size: 18748)
+Sampled 100 movies for analysis
+
+  No rating data available
+
+  -- Sample Movies --
+
+==================================================
+Cluster 1 (Size: 2370)
+Sampled 100 movies for analysis
+
+  -- Temporal Analysis --
+  Average Year: 2010.3
+  Year Range: 1955-2013
+
+  -- Genre Analysis (Coverage: 19.0%) --
+  Drama: 4902 movies
+  Romance: 3280 movies
+  Comedy: 2020 movies
+  Action: 903 movies
+  Adventure: 834 movies
+
+  -- Runtime Analysis (Coverage: 17302.0%) --
+  Average Runtime: 118.5 minutes
+
+  -- Rating Analysis (Coverage: 17302.0%) --
+  Average Rating: 7.26/10
+
+  -- Sample Movies --
+  • One Night in Turin (tt1626175)
+  • Nights in Rodanthe (tt0956038)
+  • Jobs (tt2357129)
+  • jOBS (tt2357129)
+  • The Babymakers (tt0835418)
+
+==================================================
+Cluster 2 (Size: 6683)
+Sampled 100 movies for analysis
+
+  No rating data available
+
+  -- Sample Movies --
+
+==================================================
+Cluster 3 (Size: 12650)
+Sampled 100 movies for analysis
+
+  -- Temporal Analysis --
+  Average Year: 1996.1
+  Year Range: 1919-2014
+
+  -- Genre Analysis (Coverage: 23.0%) --
+  Drama: 218 movies
+  Comedy: 189 movies
+  Action: 113 movies
+  Thriller: 106 movies
+  Crime: 105 movies
+
+  -- Runtime Analysis (Coverage: 1252.0%) --
+  Average Runtime: 101.1 minutes
+
+  -- Rating Analysis (Coverage: 1258.0%) --
+  Average Rating: 7.32/10
+
+  -- Sample Movies --
+  • Strait Jacket (tt2311880)
+  • Fortune and Men's Eyes (tt0067112)
+  • Summer of '42 (tt0067803)
+  • The Chamber (tt0115862)
+
+==================================================
+Cluster 4 (Size: 19550)
+Sampled 100 movies for analysis
+
+  -- Temporal Analysis --
+  Average Year: 2010.0
+  Year Range: 2010-2010
+
+  -- Genre Analysis (Coverage: 1.0%) --
+  Thriller: 1 movies
+
+  -- Runtime Analysis (Coverage: 1.0%) --
+  Average Runtime: 88.0 minutes
+
+  -- Rating Analysis (Coverage: 1.0%) --
+  Average Rating: 8.00/10
+
+  -- Sample Movies --

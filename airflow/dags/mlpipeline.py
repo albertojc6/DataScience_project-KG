@@ -7,6 +7,7 @@ import a_landing as landing_zone
 import b_formatted as formatted_zone
 import c_trusted as trusted_zone
 import d_explotation as explotation_zone
+import e_analysis as analysis_zone
 
 # Set environment variables
 load_dotenv(dotenv_path='/opt/airflow/.env')
@@ -44,6 +45,9 @@ with DAG(
     # Explotation tasks -> HDFS
     IMDB_crew_task,IMDB_name_task,IMDB_title_task,TMDB_task,MT_movies_task,MT_ratings_task = explotation_zone.create_tasks(dag)
 
+    # Analysis tasks
+    pattern_matching_task = analysis_zone.create_tasks(dag)
+
     [ingest_MovieTweetings, ingest_IMDb] >> ingest_TMDb
 
     # Process all data ONLY after final ingestion completes
@@ -53,3 +57,6 @@ with DAG(
     format_MovieTweetings >> trusted_MovieTweetings >> [MT_ratings_task,MT_movies_task]
     format_IMDb >> trusted_IMDb >> [IMDB_title_task,IMDB_crew_task,IMDB_name_task]
     format_TMDb >> trusted_TMDb >> [TMDB_task]
+
+    # Add pattern matching task after all data processing is complete
+    [MT_ratings_task, MT_movies_task, IMDB_title_task, IMDB_crew_task, IMDB_name_task, TMDB_task] >> pattern_matching_task
