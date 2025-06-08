@@ -12,7 +12,7 @@ import os
 
 # Configuration
 GRAPHDB_ENDPOINT = "http://graphdb:7200/repositories/moviekg/statements"
-BATCH_SIZE = 5000
+BATCH_SIZE=500
 MAX_RETRIES = 3
 RETRY_DELAY = 5  # seconds
 
@@ -91,10 +91,20 @@ def execute_graph_population(source_path, graph_creation_function):
                 return None
 
         def process_partition(partition):
+            batch = []
             for row in partition:
                 turtle_data = row['turtle']
                 if turtle_data:
-                    insert_to_graphdb(turtle_data)
+                    batch.append(turtle_data)
+                    if len(batch) >= BATCH_SIZE:
+                        combined_turtle = "\n".join(batch)
+                        insert_to_graphdb(combined_turtle)
+                        batch = []  # Reset batch
+
+            # Process remaining records in the batch
+            if batch:
+                combined_turtle = "\n".join(batch)
+                insert_to_graphdb(combined_turtle)
 
         turtle_df = df.withColumn("turtle", row_to_turtle(struct(*df.columns)))
         valid_turtle_df = turtle_df.filter("turtle IS NOT NULL").select("turtle")
