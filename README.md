@@ -11,7 +11,7 @@ The system is designed to ingest raw data from sources such as IMDb, TMDb, and M
 A central feature of the project is its implementation of the **lambda architecture** for DataOps, which ensures efficient handling of both real-time and batch data processing. The following diagram illustrates the architecture:
 
 <p align="center">
-  <img src="imgs/lambda_architecture.png" alt="Lambda Architecture for DataOps" width="900"/>
+  <img src="imgs/lambda_architecture.png" alt="Lambda Architecture for DataOps" width="1100"/>
 </p>
 
 The architecture is structured to balance speed and reliability. The batch layer processes large volumes of historical data to ensure accuracy and completeness, while the speed layer manages new, incoming data for low-latency updates. The serving layer integrates both, providing unified and up-to-date data for querying and analysis.
