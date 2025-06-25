@@ -82,6 +82,6 @@ This plot illustrates the temporal dynamics of genre popularity, providing insig
 
 ## 👤 Authors
 
-- Alberto Jerez Cubero - alberto.jerez@estudiantat.upc.edu - @albertojc6
-- Jordi Granja Bayot - jordi.granja.i@estudiantat.upc.edu - @jordigb4
-- Marta Carrión Bastida - marta.carrion@estudiantat.upc.edu - @Marta-Carrion-Bastida
+- Alberto Jerez - @albertojc6
+- Jordi Granja - @jordigb4
+- Marta Carrión - @Marta-Carrion-Bastida
