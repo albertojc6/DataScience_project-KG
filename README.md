@@ -1,4 +1,4 @@
-# 🎥 Movie Knowledge Graph: Scalable DataOps & Analytics
+# 🎥 Movie Knowledge Graph: DataOps & Analytics
 
 This repository presents a robust, containerized pipeline for constructing and analyzing a comprehensive movie knowledge graph. The project leverages modern DataOps principles to enable scalable data engineering, semantic modeling, and advanced analytics.
 
